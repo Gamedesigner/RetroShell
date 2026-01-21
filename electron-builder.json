@@ -1,19 +1,56 @@
 {
-  "appId": "com.retro.shell",
+  "$schema": "https://raw.githubusercontent.com/electron-userland/electron-builder/master/packages/app-builder-lib/scheme.json",
+  "appId": "com.retrosystems.retroshell",
   "productName": "Retro Shell",
   "directories": {
-    "output": "build"
+    "output": "release",
+    "buildResources": "assets"
   },
+  "npmRebuild": false,
+  "buildDependenciesFromSource": false,
+  "nodeGypRebuild": false,
   "files": [
     "dist/**/*",
-    "assets/**/*"
+    "node_modules/**/*",
+    "assets/**/*",
+    "!node_modules/*/{CHANGELOG.md,README.md,readme.md,README,readme}",
+    "!node_modules/*/{test,__tests__,tests,powered-test,example,examples}",
+    "!node_modules/**/*.d.ts",
+    "!**/*.map"
+  ],
+  "extraResources": [
+    {
+      "from": "node_modules/@xterm/xterm/css/",
+      "to": "node_modules/@xterm/xterm/css/",
+      "filter": ["**/*"]
+    }
   ],
   "win": {
-    "target": "nsis",
-    "requestedExecutionLevel": "requireAdministrator"
+    "target": [
+      {
+        "target": "nsis",
+        "arch": ["x64"]
+      },
+      {
+        "target": "portable",
+        "arch": ["x64"]
+      }
+    ],
+    "icon": "assets/icon.ico",
+    "requestedExecutionLevel": "requireAdministrator",
+    "signAndEditExecutable": false
   },
   "nsis": {
     "oneClick": false,
-    "allowToChangeInstallationDirectory": true
+    "allowToChangeInstallationDirectory": true,
+    "installerIcon": "assets/icon.ico",
+    "uninstallerIcon": "assets/icon.ico",
+    "installerHeaderIcon": "assets/icon.ico",
+    "createDesktopShortcut": true,
+    "createStartMenuShortcut": true,
+    "shortcutName": "Retro Shell"
+  },
+  "portable": {
+    "artifactName": "${productName}-${version}-portable.exe"
   }
 }

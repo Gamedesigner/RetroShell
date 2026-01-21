@@ -1,3 +1,10 @@
+/* CSS Variables for dynamic theming */
+:root {
+    --glow-color: rgba(204, 204, 204, 0.5);
+    --theme-background: #0000AA;
+    --theme-foreground: #CCCCCC;
+}
+
 .crt {
     position: relative;
     overflow: hidden;
@@ -57,7 +64,7 @@
 }
 
 #terminal-container {
-    text-shadow: 0 0 5px rgba(204, 204, 204, 0.5);
+    text-shadow: 0 0 5px var(--glow-color);
 }
 
 .xterm-rows {

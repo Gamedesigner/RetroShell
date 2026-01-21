@@ -8,6 +8,8 @@ function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1000,
     height: 700,
+    minWidth: 600,
+    minHeight: 400,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -15,6 +17,7 @@ function createWindow() {
     },
     frame: false, // Custom frame for retro look
     transparent: true,
+    resizable: true,
   });
 
   mainWindow.loadFile(path.join(__dirname, '../renderer/index.html'));

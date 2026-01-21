@@ -3,25 +3,33 @@
   "version": "1.0.0",
   "description": "A retro-styled PowerShell terminal",
   "main": "dist/main/main.js",
+  "author": "Ron Millar",
+  "license": "MIT",
   "scripts": {
     "build:main": "tsc",
-    "build:renderer": "esbuild src/renderer/terminal.ts --bundle --outfile=dist/renderer/terminal.js --platform=browser --format=iife --sourcemap",
+    "build:renderer": "esbuild src/renderer/terminal.ts --bundle --outfile=dist/renderer/terminal.js --platform=browser --format=iife --sourcemap && esbuild src/renderer/settings.ts --bundle --outfile=dist/renderer/settings.js --platform=browser --format=iife --sourcemap",
     "build:assets": "copyfiles -u 2 src/renderer/**/*.html src/renderer/**/*.css dist/renderer",
     "build": "npm run build:main && npm run build:renderer && npm run build:assets",
     "watch": "tsc -w",
     "start": "npm run build && electron .",
     "rebuild": "electron-rebuild",
-    "postinstall": "electron-rebuild --force"
+    "postinstall": "electron-rebuild --force",
+    "dist": "npm run build && electron-builder",
+    "dist:win": "npm run build && electron-builder --win"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
+  "keywords": [
+    "terminal",
+    "powershell",
+    "retro",
+    "electron"
+  ],
   "type": "commonjs",
   "devDependencies": {
     "copyfiles": "^2.4.1",
     "electron": "^40.0.0",
     "electron-builder": "^26.4.0",
     "esbuild": "^0.27.2",
+    "png-to-ico": "^3.0.1",
     "typescript": "^5.9.3"
   },
   "dependencies": {
