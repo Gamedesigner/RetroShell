@@ -133,6 +133,17 @@ body, html {
     font-weight: bold;
 }
 
+#cube-btn {
+    font-weight: bold;
+    font-size: 11px;
+    padding: 2px 4px;
+}
+
+#cube-btn.active {
+    background: #0000AA;
+    color: #CCCCCC;
+}
+
 /* Holographic Sci-Fi Window Frame */
 .holographic #window-frame {
     background: rgba(10, 22, 40, 0.95);
@@ -187,4 +198,11 @@ body, html {
     background: #050b14;
     color: #00ff66;
     border: 1px solid rgba(0, 255, 102, 0.5);
+}
+
+.holographic #cube-btn.active {
+    background: rgba(0, 255, 102, 0.3);
+    color: #00ff66;
+    border-color: #00ff66;
+    box-shadow: 0 0 10px rgba(0, 255, 102, 0.5), inset 0 0 5px rgba(0, 255, 102, 0.2);
 }

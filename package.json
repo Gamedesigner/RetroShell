@@ -7,7 +7,7 @@
   "license": "MIT",
   "scripts": {
     "build:main": "tsc",
-    "build:renderer": "esbuild src/renderer/terminal.ts --bundle --outfile=dist/renderer/terminal.js --platform=browser --format=iife --sourcemap && esbuild src/renderer/settings.ts --bundle --outfile=dist/renderer/settings.js --platform=browser --format=iife --sourcemap",
+    "build:renderer": "esbuild src/renderer/terminal.ts --bundle --outfile=dist/renderer/terminal.js --platform=browser --format=iife --sourcemap && esbuild src/renderer/settings.ts --bundle --outfile=dist/renderer/settings.js --platform=browser --format=iife --sourcemap && esbuild src/renderer/holoCube.ts --bundle --outfile=dist/renderer/holoCube.js --platform=browser --format=iife --sourcemap",
     "build:assets": "copyfiles -u 2 src/renderer/**/*.html src/renderer/**/*.css dist/renderer",
     "build": "npm run build:main && npm run build:renderer && npm run build:assets",
     "watch": "tsc -w",
@@ -33,9 +33,11 @@
     "typescript": "^5.9.3"
   },
   "dependencies": {
+    "@types/three": "^0.182.0",
     "@xterm/addon-fit": "^0.11.0",
     "@xterm/addon-web-links": "^0.12.0",
     "@xterm/xterm": "^6.0.0",
-    "node-pty": "^1.1.0"
+    "node-pty": "^1.1.0",
+    "three": "^0.182.0"
   }
 }
