@@ -23,6 +23,13 @@ function applyThemeToCss(theme: RetroTheme) {
     document.documentElement.style.setProperty('--glow-color', theme.glow);
     document.documentElement.style.setProperty('--theme-background', theme.background || '#0000AA');
     document.documentElement.style.setProperty('--theme-foreground', theme.foreground || '#CCCCCC');
+    
+    // Toggle holographic class for specific effects
+    if (theme.name === 'Holographic') {
+        document.body.classList.add('holographic');
+    } else {
+        document.body.classList.remove('holographic');
+    }
 }
 
 const terminalContainer = document.getElementById('terminal-container');

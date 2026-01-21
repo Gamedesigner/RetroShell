@@ -132,3 +132,59 @@ body, html {
 #settings-btn {
     font-weight: bold;
 }
+
+/* Holographic Sci-Fi Window Frame */
+.holographic #window-frame {
+    background: rgba(10, 22, 40, 0.95);
+    border: 1px solid rgba(0, 255, 102, 0.5);
+    box-shadow: 0 0 15px rgba(0, 255, 102, 0.2);
+}
+
+.holographic #title-bar {
+    background: rgba(0, 255, 102, 0.1);
+    color: #00ff66;
+    border-bottom: 1px solid rgba(0, 255, 102, 0.3);
+    text-shadow: 0 0 5px rgba(0, 255, 102, 0.5);
+}
+
+.holographic #controls button {
+    background: transparent;
+    border: 1px solid rgba(0, 255, 102, 0.4);
+    color: #00ff66;
+    transition: all 0.2s;
+}
+
+.holographic #controls button:hover {
+    background: rgba(0, 255, 102, 0.2);
+    border-color: #00ff66;
+    box-shadow: 0 0 8px rgba(0, 255, 102, 0.4);
+}
+
+.holographic #status-bar {
+    background: rgba(0, 255, 102, 0.05);
+    color: #00ff66;
+    border-top: 1px solid rgba(0, 255, 102, 0.2);
+    text-shadow: 0 0 3px rgba(0, 255, 102, 0.4);
+}
+
+.holographic #settings-panel {
+    background: #0a1628;
+    border: 1px solid #00ff66;
+    box-shadow: 0 0 20px rgba(0, 255, 102, 0.3);
+}
+
+.holographic #settings-header {
+    background: rgba(0, 255, 102, 0.15);
+    color: #00ff66;
+    border-bottom: 1px solid rgba(0, 255, 102, 0.3);
+}
+
+.holographic #settings-content {
+    color: #00ff66;
+}
+
+.holographic .settings-group select {
+    background: #050b14;
+    color: #00ff66;
+    border: 1px solid rgba(0, 255, 102, 0.5);
+}

@@ -70,3 +70,52 @@
 .xterm-rows {
     filter: blur(0.5px);
 }
+
+/* Holographic Theme Specific Effects */
+.holographic .crt::before {
+    /* Stronger, green-tinted scanlines */
+    background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.4) 50%), 
+                linear-gradient(90deg, rgba(0, 255, 102, 0.03), rgba(0, 255, 102, 0.01), rgba(0, 255, 102, 0.03));
+    background-size: 100% 6px, 4px 100%;
+}
+
+.holographic .crt::after {
+    /* Reduced flicker for hologram */
+    animation: flicker 0.3s infinite;
+    background: rgba(0, 255, 102, 0.02);
+}
+
+.holographic #terminal-container {
+    /* Floating hologram glow */
+    box-shadow: 0 0 30px rgba(0, 255, 102, 0.2),
+                0 0 60px rgba(0, 255, 102, 0.1),
+                inset 0 0 20px rgba(0, 255, 102, 0.05);
+    border: 1px solid rgba(0, 255, 102, 0.3);
+    border-radius: 4px;
+    margin: 10px;
+    text-shadow: 0 0 8px var(--glow-color);
+}
+
+/* Subtle data stream animation for holographic look */
+.holographic .crt::after {
+    content: " ";
+    display: block;
+    position: absolute;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    right: 0;
+    background: linear-gradient(
+        transparent 0%,
+        rgba(0, 255, 102, 0.05) 50%,
+        transparent 100%
+    );
+    background-size: 100% 200px;
+    animation: scan 10s linear infinite, flicker 0.3s infinite;
+    z-index: 3;
+}
+
+@keyframes scan {
+    0% { background-position: 0 -200px; }
+    100% { background-position: 0 100vh; }
+}

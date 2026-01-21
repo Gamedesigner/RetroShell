@@ -91,7 +91,37 @@ export const greenPhosphor: RetroTheme = {
   brightWhite: '#88FF88'
 };
 
+// Holographic - Inspired by "Another World"
+export const holographic: RetroTheme = {
+  name: 'Holographic',
+  foreground: '#00ff66',      // Bright green hologram text
+  background: 'rgba(10, 22, 40, 0.85)', // Semi-transparent deep navy
+  cursor: '#00ff66',
+  cursorAccent: '#0a1628',
+  selectionBackground: 'rgba(0, 255, 102, 0.3)',
+  selectionForeground: '#ffffff',
+  glow: 'rgba(0, 255, 102, 0.7)', // Strong green glow
+  // Green-tinted ANSI colors for holographic look
+  black: '#0a1628',
+  brightBlack: '#1a365d',
+  red: '#00ffcc',
+  brightRed: '#33ffdd',
+  green: '#00ff66',
+  brightGreen: '#33ff88',
+  yellow: '#ccff00',
+  brightYellow: '#ddff33',
+  blue: '#00ccff',
+  brightBlue: '#33ddff',
+  magenta: '#00ff99',
+  brightMagenta: '#33ffaa',
+  cyan: '#00ffcc',
+  brightCyan: '#33ffdd',
+  white: '#00ff66',
+  brightWhite: '#ffffff'
+};
+
 export const themes: Record<string, RetroTheme> = {
+  holographic,
   dosBlue,
   amber,
   greenPhosphor
@@ -99,4 +129,4 @@ export const themes: Record<string, RetroTheme> = {
 
 export type ThemeName = keyof typeof themes;
 
-export const defaultTheme: ThemeName = 'dosBlue';
+export const defaultTheme: ThemeName = 'holographic';
