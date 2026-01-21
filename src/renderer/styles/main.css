@@ -1,0 +1,58 @@
+body, html {
+    margin: 0;
+    padding: 0;
+    height: 100%;
+    width: 100%;
+    overflow: hidden;
+    background: transparent;
+}
+
+#window-frame {
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    border: 2px solid #CCCCCC;
+    box-sizing: border-box;
+    background: #0000AA;
+}
+
+#title-bar {
+    background: #CCCCCC;
+    color: #0000AA;
+    padding: 4px 8px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    -webkit-app-region: drag;
+    font-weight: bold;
+    font-family: 'Perfect DOS VGA 437', monospace;
+}
+
+#controls button {
+    background: #CCCCCC;
+    border: 1px solid #0000AA;
+    color: #0000AA;
+    margin-left: 4px;
+    cursor: pointer;
+    -webkit-app-region: no-drag;
+}
+
+#terminal-container {
+    flex: 1;
+    padding: 8px;
+    overflow: hidden;
+}
+
+#status-bar {
+    background: #CCCCCC;
+    color: #0000AA;
+    padding: 4px 12px;
+    display: flex;
+    justify-content: space-between;
+    font-size: 14px;
+    font-family: 'Perfect DOS VGA 437', monospace;
+}
+
+.xterm-viewport {
+    background-color: transparent !important;
+}

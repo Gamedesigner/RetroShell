@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Retro Shell</title>
+    <link rel="stylesheet" href="../../node_modules/@xterm/xterm/css/xterm.css">
+    <link rel="stylesheet" href="styles/main.css">
+    <link rel="stylesheet" href="styles/crt.css">
+    <link rel="stylesheet" href="styles/fonts.css">
+</head>
+<body class="crt">
+    <div id="window-frame">
+        <div id="title-bar">
+            <span id="title">RETRO-SHELL v1.0</span>
+            <div id="controls">
+                <button onclick="window.electronAPI.minimizeWindow()">_</button>
+                <button onclick="window.electronAPI.maximizeWindow()">[]</button>
+                <button onclick="window.electronAPI.closeWindow()">X</button>
+            </div>
+        </div>
+        <div id="terminal-container"></div>
+        <div id="status-bar">
+            <span id="date"></span>
+            <span id="time"></span>
+        </div>
+    </div>
+    <script src="./terminal.js"></script>
+</body>
+</html>

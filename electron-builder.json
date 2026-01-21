@@ -1,0 +1,19 @@
+{
+  "appId": "com.retro.shell",
+  "productName": "Retro Shell",
+  "directories": {
+    "output": "build"
+  },
+  "files": [
+    "dist/**/*",
+    "assets/**/*"
+  ],
+  "win": {
+    "target": "nsis",
+    "requestedExecutionLevel": "requireAdministrator"
+  },
+  "nsis": {
+    "oneClick": false,
+    "allowToChangeInstallationDirectory": true
+  }
+}
