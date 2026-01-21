@@ -22,10 +22,10 @@ export class HoloCubeScene {
         // Initialize Three.js scene
         this.scene = new THREE.Scene();
 
-        // Camera setup with perspective - pull back to see larger cube
+        // Camera setup with perspective - pull back to see taller cube
         const aspect = container.clientWidth / container.clientHeight;
         this.camera = new THREE.PerspectiveCamera(50, aspect, 0.1, 1000);
-        this.camera.position.z = 5.5;
+        this.camera.position.z = 7;
 
         // WebGL renderer with transparency
         this.renderer = new THREE.WebGLRenderer({
@@ -64,8 +64,8 @@ export class HoloCubeScene {
     }
 
     private createWireframeCube(scale: number = 1, opacity: number = 0.8): THREE.LineSegments {
-        // Create box geometry - wider for terminal text, taller for more rows, deeper for 3D effect
-        const geometry = new THREE.BoxGeometry(3.6 * scale, 2.4 * scale, 1.8 * scale);
+        // Create box geometry - wider for terminal text, doubled height for more rows
+        const geometry = new THREE.BoxGeometry(3.6 * scale, 4.8 * scale, 1.8 * scale);
         const edges = new THREE.EdgesGeometry(geometry);
 
         // Glowing green material

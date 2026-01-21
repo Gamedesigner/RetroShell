@@ -151,7 +151,7 @@ if (terminalContainer) {
     // Function to get lines ensuring cursor/prompt is always visible at bottom
     function getTerminalLinesForHolo(): { lines: string[], colors: number[][] } {
         const data = getTerminalLinesWithColors();
-        const maxRows = 14; // Match holoText MAX_ROWS
+        const maxRows = 45; // Match holoText MAX_ROWS
         
         // Find the cursor line (prompt line) - it's typically where we're typing
         const cursorLineIndex = data.cursorRow;

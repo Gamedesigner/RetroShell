@@ -646,16 +646,15 @@ export class HoloTextRenderer {
     private voxelGeometry: THREE.BoxGeometry;
     private baseMaterial: THREE.MeshBasicMaterial;
 
-    // Layout settings - sized to fit inside the cube (3.6w x 2.4h x 1.8d)
-    // Cube inner bounds: ±1.8 width, ±1.2 height
-    // Text grid: 40 cols × 14 rows with larger voxels for visibility
-    // Width: 40 × 6 × 0.014 = 3.36 (fits in 3.6)
-    // Height: 14 × 8 × 0.014 = 1.57 (fits in 2.4)
-    private readonly VOXEL_SIZE = 0.014;
+    // Layout settings - sized to fit inside the cube (3.6w x 4.8h x 1.8d)
+    // Cube inner bounds: ±1.8 width, ±2.4 height (doubled)
+    // Width: 60 × 6 × 0.009 = 3.24 (fits in 3.6)
+    // Height: 45 × 8 × 0.009 = 3.24 (fits in 4.8)
+    private readonly VOXEL_SIZE = 0.009;
     private readonly CHAR_WIDTH = 6; // 5 pixels + 1 spacing
     private readonly CHAR_HEIGHT = 8; // 7 pixels + 1 spacing
-    private readonly MAX_COLS = 40;
-    private readonly MAX_ROWS = 14;
+    private readonly MAX_COLS = 60;
+    private readonly MAX_ROWS = 45;
 
     constructor(parentGroup: THREE.Group) {
         this.parentGroup = parentGroup;
