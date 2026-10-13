@@ -18,16 +18,44 @@
     display: block;
 }
 
-/* CUBE / FILES switch in the corner of the 3D view */
-#holo-mode-switch {
+/* Top bar of the 3D view: CUBE / FILES switch, then UP and the graph's folder */
+#holo-topbar {
     position: absolute;
     top: 10px;
     left: 10px;
+    right: 10px;
     z-index: 2;
     display: flex;
+    align-items: center;
+    gap: 12px;
+    pointer-events: none; /* only the controls themselves take clicks */
 }
 
-#holo-mode-switch button {
+#holo-mode-switch,
+#holo-path-bar {
+    display: flex;
+    align-items: center;
+    pointer-events: auto;
+}
+
+#holo-path-bar {
+    gap: 8px;
+    min-width: 0;
+}
+
+#holo-path-bar.hidden {
+    display: none;
+}
+
+#holo-path {
+    color: rgb(var(--holo-rgb));
+    font-family: 'Perfect DOS VGA 437', monospace;
+    font-size: 13px;
+    white-space: nowrap;
+}
+
+#holo-mode-switch button,
+#holo-up-btn {
     background: transparent;
     border: 1px solid rgba(var(--holo-rgb), 0.5);
     color: rgb(var(--holo-rgb));
@@ -35,6 +63,15 @@
     font-size: 12px;
     padding: 3px 10px;
     cursor: pointer;
+}
+
+#holo-up-btn:hover:enabled {
+    background: rgba(var(--holo-rgb), 0.25);
+}
+
+#holo-up-btn:disabled {
+    opacity: 0.35;
+    cursor: default;
 }
 
 #holo-mode-switch button + button {
@@ -63,6 +100,82 @@
 
 #holo-prompt-line.hidden {
     display: none;
+}
+
+/* File info panel, docked on the right of the 3D view; slides in when opened */
+#holo-file-panel {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    bottom: 36px;
+    width: 270px;
+    z-index: 2;
+    display: flex;
+    flex-direction: column;
+    background: rgba(0, 0, 0, 0.45);
+    border: 1px solid rgba(var(--holo-rgb), 0.5);
+    color: rgb(var(--holo-rgb));
+    font-family: 'Perfect DOS VGA 437', monospace;
+    font-size: 13px;
+    transform: translateX(calc(100% + 12px));
+    transition: transform 0.2s ease-out;
+}
+
+#holo-file-panel.open {
+    transform: none;
+}
+
+#holo-file-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 8px;
+    padding: 8px 10px;
+    border-bottom: 1px solid rgba(var(--holo-rgb), 0.3);
+    font-weight: bold;
+}
+
+#holo-file-name {
+    overflow-wrap: anywhere;
+}
+
+#holo-file-details {
+    flex: 1;
+    margin: 0;
+    padding: 10px;
+    overflow-y: auto;
+}
+
+#holo-file-details dt {
+    opacity: 0.6;
+    font-size: 11px;
+}
+
+#holo-file-details dd {
+    margin: 2px 0 10px 0;
+    overflow-wrap: anywhere;
+}
+
+#holo-file-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: 10px;
+    border-top: 1px solid rgba(var(--holo-rgb), 0.3);
+}
+
+#holo-file-panel button {
+    background: transparent;
+    border: 1px solid rgba(var(--holo-rgb), 0.5);
+    color: rgb(var(--holo-rgb));
+    font-family: 'Perfect DOS VGA 437', monospace;
+    font-size: 12px;
+    padding: 4px 8px;
+    cursor: pointer;
+}
+
+#holo-file-panel button:hover {
+    background: rgba(var(--holo-rgb), 0.25);
 }
 
 /* Terminal container hidden state - use visibility instead of display:none

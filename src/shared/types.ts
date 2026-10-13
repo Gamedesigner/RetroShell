@@ -5,8 +5,15 @@ export interface DirectoryEntry {
 
 export interface DirectoryListing {
   path: string;
+  parent: string | null; // null at the top of a drive
   entries: DirectoryEntry[];
   error?: string;
+}
+
+export interface FileInfo {
+  size: number;
+  modified: number; // ms since epoch
+  created: number;
 }
 
 export interface ElectronAPI {
@@ -20,6 +27,8 @@ export interface ElectronAPI {
   moveWindowResize: () => void;
   endWindowResize: () => void;
   listDirectory: (dirPath: string) => Promise<DirectoryListing>;
+  getFileInfo: (filePath: string) => Promise<FileInfo | null>;
+  showInExplorer: (filePath: string) => void;
 }
 
 declare global {

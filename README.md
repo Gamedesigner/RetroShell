@@ -13,7 +13,7 @@ A retro-styled PowerShell terminal for Windows, with CRT effects, keyboard sound
 - **CRT look** - scanlines, flicker and phosphor glow.
 - **Sound effects** - synthesized key clicks, spacebar, return and bell sounds. Can be switched off.
 - **3D mode** - the live terminal rendered as voxel text inside a rotating wireframe cube. You can keep typing while it is on.
-- **File graph** - in 3D mode, switch from CUBE to FILES and the cube bursts open into a floating graph of the shell's current folder. Folders open and close as you click them; clicking a file puts its path on the command line.
+- **File graph** - in 3D mode, switch from CUBE to FILES and the cube bursts open into a floating graph of the shell's current folder. Folders open and close as you click them, files are drawn as a different wireframe shape per kind, and clicking a file puts its path on the command line.
 
 ## Controls
 
@@ -23,12 +23,37 @@ A retro-styled PowerShell terminal for Windows, with CRT effects, keyboard sound
 | Open settings (theme, sound) | `Ctrl+,` or the `*` button |
 | Rotate the cube | Drag with the mouse |
 | Reset the cube | Double-click it |
-| Switch between cube and file graph | `CUBE` / `FILES` in the corner of the 3D view |
-| Open or close a folder in the graph | Click it |
-| Put a file's path on the command line | Click the file |
-| Rotate / zoom the graph | Drag / scroll |
 | Resize the window | Drag any edge or corner |
 | Move the window | Drag the title bar |
+
+### File graph
+
+| Action | How |
+| --- | --- |
+| Switch between cube and file graph | `CUBE` / `FILES` in the corner of the 3D view |
+| Open or close a folder | Click it |
+| Make a folder the centre of the graph | Right-click or double-click it |
+| Go up a folder | `UP`, or double-click the ringed root at the centre |
+| Put a file's path on the command line | Click the file |
+| Show a file's details | Double-click the file |
+| See a node's full name | Hover over it |
+| Rotate / zoom | Drag / scroll |
+
+The graph starts at the shell's current folder and follows it when you `cd`. The file details panel can also re-centre the graph on the file's folder or show the file in Windows Explorer. Labels are hidden where they would overlap; zoom in or hover to see more.
+
+| Shape | Kind of file |
+| --- | --- |
+| Diamond | Folder (the root has a ring around it) |
+| Cube | Code |
+| Pyramid | Data / config |
+| Upright page | Document |
+| Picture frame | Image |
+| Record | Audio |
+| Play triangle | Video |
+| Box in a box | Archive |
+| Faceted gem | Program / script |
+| Mesh sphere | 3D model |
+| Dot | Anything else |
 
 ## Running from source
 

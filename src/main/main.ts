@@ -1,7 +1,7 @@
-import { app, BrowserWindow, ipcMain, screen, Rectangle, Point } from 'electron';
+import { app, BrowserWindow, ipcMain, screen, shell, Rectangle, Point } from 'electron';
 import * as path from 'path';
 import { createPty } from './pty';
-import { listDirectory } from './files';
+import { listDirectory, fileInfo } from './files';
 
 let mainWindow: BrowserWindow | null = null;
 
@@ -105,6 +105,13 @@ app.on('ready', () => {
   });
 
   ipcMain.handle('fs-list-dir', (event, dirPath: string) => listDirectory(dirPath));
+
+  ipcMain.handle('fs-file-info', (event, filePath: string) => fileInfo(filePath));
+
+  // Opens the containing folder in Explorer with the file selected
+  ipcMain.on('fs-show-in-explorer', (event, filePath: string) => {
+    shell.showItemInFolder(filePath);
+  });
 });
 
 app.on('window-all-closed', () => {

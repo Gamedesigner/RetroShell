@@ -5,6 +5,7 @@ import { themes, defaultTheme, ThemeName, RetroTheme } from './themes';
 import { soundManager } from './sounds';
 import { ElectronAPI } from '../shared/types';
 import { HoloCubeScene, HoloMode } from './holoCube';
+import { initFilePanel } from './filePanel';
 import './windowResize';
 
 declare const window: Window & { electronAPI: ElectronAPI };
@@ -43,6 +44,9 @@ const holoCubeContainer = document.getElementById('holo-cube-container');
 const cubeBtn = document.getElementById('cube-btn');
 const holoModeSwitch = document.getElementById('holo-mode-switch');
 const holoPromptLine = document.getElementById('holo-prompt-line');
+const holoPathBar = document.getElementById('holo-path-bar');
+const holoPath = document.getElementById('holo-path');
+const holoUpBtn = document.getElementById('holo-up-btn') as HTMLButtonElement | null;
 
 // Cube mode state
 let cubeModeActive = false;
@@ -208,14 +212,46 @@ if (terminalContainer) {
         soundManager.playKeyClick();
     }
 
+    // The file graph can be steered on its own (go up, dive into a folder), so it
+    // is only pulled back to the shell's folder when the shell actually moves.
+    let followedDirectory: string | null = null;
+    function shellDirectoryIfMoved(): string {
+        const directory = getShellDirectory();
+        if (directory === followedDirectory) return '';
+        followedDirectory = directory;
+        return directory;
+    }
+
+    const filePanel = initFilePanel((folder) => holoCubeScene?.showFolder(folder));
+
+    // UP button and the folder the graph is showing, beside the CUBE / FILES switch
+    function updatePathBar() {
+        if (!holoCubeScene || !holoPath || !holoUpBtn) return;
+        const folder = holoCubeScene.getGraphFolder() ?? '';
+        if (holoPath.title !== folder) {
+            holoPath.title = folder;
+            // Long paths keep their tail, cut at a folder boundary
+            const tail = folder.slice(-57);
+            holoPath.textContent = folder.length > 60 ? '...' + tail.slice(Math.max(tail.indexOf('\\'), 0)) : folder;
+        }
+        holoUpBtn.disabled = !holoCubeScene.canGoUp();
+    }
+
+    holoUpBtn?.addEventListener('click', () => {
+        holoCubeScene?.goUp();
+        holoUpBtn.blur(); // keep keystrokes going to the terminal
+    });
+
     // Switch the 3D view between the terminal cube and the file graph
     function setHoloMode(mode: HoloMode) {
         if (!holoCubeScene) return;
-        holoCubeScene.setMode(mode, getShellDirectory());
+        holoCubeScene.setMode(mode, mode === 'files' ? shellDirectoryIfMoved() : '');
         holoModeSwitch?.querySelectorAll('button').forEach((button) => {
             button.classList.toggle('active', button.dataset.mode === mode);
         });
         holoPromptLine?.classList.toggle('hidden', mode !== 'files');
+        holoPathBar?.classList.toggle('hidden', mode !== 'files');
+        if (mode !== 'files') filePanel.close();
         syncTerminalToHolo();
     }
 
@@ -242,7 +278,10 @@ if (terminalContainer) {
             if (!holoCubeScene) {
                 const { init: initHoloCube } = (window as any).holoCube;
                 holoCubeScene = initHoloCube(holoCubeContainer);
-                if (holoCubeScene) holoCubeScene.onFilePicked = typePathAtPrompt;
+                if (holoCubeScene) {
+                    holoCubeScene.onFilePicked = typePathAtPrompt;
+                    holoCubeScene.onFileOpened = filePanel.open;
+                }
             }
             if (holoCubeScene) {
                 holoCubeScene.setPalette(currentTheme.holo);
@@ -285,7 +324,9 @@ if (terminalContainer) {
         if (holoCubeScene.getMode() === 'files') {
             // The cube is out of sight: show the input line and follow the shell's folder
             if (holoPromptLine) holoPromptLine.textContent = getCursorLine();
-            holoCubeScene.showFolder(getShellDirectory());
+            const moved = shellDirectoryIfMoved();
+            if (moved) holoCubeScene.showFolder(moved);
+            updatePathBar();
             return;
         }
 

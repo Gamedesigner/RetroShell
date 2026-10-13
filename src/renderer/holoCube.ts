@@ -32,8 +32,11 @@ export class HoloCubeScene {
     private dragDistance = 0;
     private raycaster = new THREE.Raycaster();
 
-    // Called with the full path when a file node is clicked
+    // Called with the full path when a file node is clicked / double-clicked
     public onFilePicked: ((filePath: string) => void) | null = null;
+    public onFileOpened: ((filePath: string) => void) | null = null;
+    // A file click waits briefly in case it turns out to be a double-click
+    private pendingPick: ReturnType<typeof setTimeout> | null = null;
 
     constructor(container: HTMLElement) {
         this.container = container;
@@ -137,10 +140,16 @@ export class HoloCubeScene {
         });
 
         canvas.addEventListener('mouseup', (e) => {
-            // A press without a drag is a click on the file graph
-            if (this.isDragging && this.mode === 'files' && this.dragDistance < 5) {
+            // A left press without a drag is a click on the file graph
+            if (e.button === 0 && this.isDragging && this.mode === 'files' && this.dragDistance < 5) {
                 const filePath = this.graph.click(this.aimRaycaster(e));
-                if (filePath) this.onFilePicked?.(filePath);
+                this.cancelPendingPick();
+                if (filePath) {
+                    this.pendingPick = setTimeout(() => {
+                        this.pendingPick = null;
+                        this.onFilePicked?.(filePath);
+                    }, 250);
+                }
             }
             this.isDragging = false;
         });
@@ -149,11 +158,24 @@ export class HoloCubeScene {
             this.isDragging = false;
         });
 
-        // Double-click to reset rotation
-        canvas.addEventListener('dblclick', () => {
-            if (this.mode !== 'cube') return;
+        // Double-click to reset rotation, or to open / navigate in the file graph
+        canvas.addEventListener('dblclick', (e) => {
+            if (this.mode === 'files') {
+                this.cancelPendingPick();
+                const filePath = this.graph.doubleClick(this.aimRaycaster(e));
+                if (filePath) this.onFileOpened?.(filePath);
+                return;
+            }
             this.cubeRotation = { x: -0.15, y: 0.25 };
             this.autoRotate = true;
+        });
+
+        // Right-click a folder in the file graph to put it at the centre
+        canvas.addEventListener('contextmenu', (e) => {
+            e.preventDefault();
+            if (this.mode === 'files' && this.dragDistance < 5) {
+                this.graph.centerOn(this.aimRaycaster(e));
+            }
         });
 
         // Scroll to zoom the file graph
@@ -162,6 +184,13 @@ export class HoloCubeScene {
             e.preventDefault();
             this.graphZoom = Math.max(2, Math.min(30, this.graphZoom * (1 + e.deltaY * 0.001)));
         }, { passive: false });
+    }
+
+    private cancelPendingPick() {
+        if (this.pendingPick !== null) {
+            clearTimeout(this.pendingPick);
+            this.pendingPick = null;
+        }
     }
 
     private aimRaycaster(e: MouseEvent): THREE.Raycaster {
@@ -186,6 +215,19 @@ export class HoloCubeScene {
     // Point the file graph at a folder; does nothing when it is already showing it
     public showFolder(directory: string) {
         void this.graph.setRoot(directory);
+    }
+
+    // The folder the file graph is rooted at (null until one has loaded)
+    public getGraphFolder(): string | null {
+        return this.graph.getRootPath();
+    }
+
+    public canGoUp(): boolean {
+        return this.graph.canGoUp();
+    }
+
+    public goUp() {
+        this.graph.goUp();
     }
 
     public getMode(): HoloMode {
@@ -257,7 +299,8 @@ export class HoloCubeScene {
             this.textRenderer.update(this.time);
         }
         if (this.graph.group.visible) {
-            this.graph.update();
+            const canvas = this.renderer.domElement;
+            this.graph.update(this.camera, canvas.clientWidth, canvas.clientHeight);
         }
 
         this.renderer.render(this.scene, this.camera);

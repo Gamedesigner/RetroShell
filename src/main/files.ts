@@ -2,7 +2,7 @@ import { execFile } from 'child_process';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { DirectoryListing } from '../shared/types';
+import { DirectoryListing, FileInfo } from '../shared/types';
 
 // Names that `dir` would show. Windows hides entries carrying the Hidden or
 // System attribute (.git, NTUSER.DAT, the legacy profile junctions...), and
@@ -31,6 +31,7 @@ function visibleNamesWindows(dirPath: string): Promise<Set<string> | null> {
 export async function listDirectory(dirPath: string): Promise<DirectoryListing> {
   const isWindows = process.platform === 'win32';
   const target = dirPath && path.isAbsolute(dirPath) ? path.normalize(dirPath) : os.homedir();
+  const parent = path.dirname(target) !== target ? path.dirname(target) : null;
 
   try {
     const [dirents, visible] = await Promise.all([
@@ -52,8 +53,18 @@ export async function listDirectory(dirPath: string): Promise<DirectoryListing> 
       return { name: d.name, isDirectory };
     }));
 
-    return { path: target, entries };
+    return { path: target, parent, entries };
   } catch (err) {
-    return { path: target, entries: [], error: (err as NodeJS.ErrnoException).code || 'error' };
+    return { path: target, parent, entries: [], error: (err as NodeJS.ErrnoException).code || 'error' };
+  }
+}
+
+// Size and dates for the file info panel
+export async function fileInfo(filePath: string): Promise<FileInfo | null> {
+  try {
+    const stats = await fs.promises.stat(filePath);
+    return { size: stats.size, modified: stats.mtimeMs, created: stats.birthtimeMs };
+  } catch {
+    return null;
   }
 }

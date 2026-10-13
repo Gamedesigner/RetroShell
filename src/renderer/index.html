@@ -23,11 +23,28 @@
         </div>
         <div id="terminal-container"></div>
         <div id="holo-cube-container" class="hidden">
-            <div id="holo-mode-switch">
-                <button data-mode="cube" class="active" title="Terminal in the cube">CUBE</button>
-                <button data-mode="files" title="File graph of the current folder">FILES</button>
+            <div id="holo-topbar">
+                <div id="holo-mode-switch">
+                    <button data-mode="cube" class="active" title="Terminal in the cube">CUBE</button>
+                    <button data-mode="files" title="File graph of the current folder">FILES</button>
+                </div>
+                <div id="holo-path-bar" class="hidden">
+                    <button id="holo-up-btn" title="Go up one folder (same as double-clicking the root)">UP</button>
+                    <span id="holo-path"></span>
+                </div>
             </div>
             <div id="holo-prompt-line" class="hidden"></div>
+            <div id="holo-file-panel">
+                <div id="holo-file-header">
+                    <span id="holo-file-name"></span>
+                    <button id="holo-file-close" title="Close">X</button>
+                </div>
+                <dl id="holo-file-details"></dl>
+                <div id="holo-file-actions">
+                    <button id="holo-file-root" title="Make this file's folder the root of the graph">OPEN FOLDER IN GRAPH</button>
+                    <button id="holo-file-explorer" title="Open the folder in Windows Explorer with the file selected">SHOW IN EXPLORER</button>
+                </div>
+            </div>
         </div>
         <div id="status-bar">
             <span id="date"></span>
