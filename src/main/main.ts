@@ -5,6 +5,9 @@ import { listDirectory } from './files';
 
 let mainWindow: BrowserWindow | null = null;
 
+const MIN_WIDTH = 800;
+const MIN_HEIGHT = 600;
+
 // Active edge drag from the renderer's resize handles
 let resizeDrag: { edge: string; startBounds: Rectangle; startCursor: Point } | null = null;
 
@@ -12,8 +15,8 @@ function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1100,
     height: 850,
-    minWidth: 800,
-    minHeight: 600,
+    minWidth: MIN_WIDTH,
+    minHeight: MIN_HEIGHT,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -79,17 +82,19 @@ app.on('ready', () => {
     const cursor = screen.getCursorScreenPoint();
     const dx = cursor.x - startCursor.x;
     const dy = cursor.y - startCursor.y;
-    const [minWidth, minHeight] = mainWindow.getMinimumSize();
 
+    // Clamp to our own minimum: Electron resets a transparent window's minimum
+    // size to its current size on every setBounds, so getMinimumSize() would
+    // only ever let the window grow.
     let { x, y, width, height } = startBounds;
-    if (edge.includes('e')) width = Math.max(minWidth, startBounds.width + dx);
-    if (edge.includes('s')) height = Math.max(minHeight, startBounds.height + dy);
+    if (edge.includes('e')) width = Math.max(MIN_WIDTH, startBounds.width + dx);
+    if (edge.includes('s')) height = Math.max(MIN_HEIGHT, startBounds.height + dy);
     if (edge.includes('w')) {
-      width = Math.max(minWidth, startBounds.width - dx);
+      width = Math.max(MIN_WIDTH, startBounds.width - dx);
       x = startBounds.x + startBounds.width - width;
     }
     if (edge.includes('n')) {
-      height = Math.max(minHeight, startBounds.height - dy);
+      height = Math.max(MIN_HEIGHT, startBounds.height - dy);
       y = startBounds.y + startBounds.height - height;
     }
     mainWindow.setBounds({ x, y, width, height });
