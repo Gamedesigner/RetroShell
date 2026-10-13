@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { HoloTextRenderer } from './holoText';
+import { HoloPalette } from './themes';
 
 export class HoloCubeScene {
     private scene: THREE.Scene;
@@ -7,6 +8,7 @@ export class HoloCubeScene {
     private renderer: THREE.WebGLRenderer;
     private cube: THREE.Group;
     private wireframe: THREE.LineSegments;
+    private innerWireframe: THREE.LineSegments;
     private textRenderer: HoloTextRenderer;
     private container: HTMLElement;
     private animationId: number | null = null;
@@ -46,8 +48,8 @@ export class HoloCubeScene {
         this.cube.add(this.wireframe);
 
         // Create inner glow effect (slightly smaller wireframe)
-        const innerWireframe = this.createWireframeCube(0.98, 0.3);
-        this.cube.add(innerWireframe);
+        this.innerWireframe = this.createWireframeCube(0.98, 0.3);
+        this.cube.add(this.innerWireframe);
 
         // Initialize text renderer
         this.textRenderer = new HoloTextRenderer(this.cube);
@@ -163,6 +165,13 @@ export class HoloCubeScene {
 
     public updateText(lines: string[], colors?: number[][]) {
         this.textRenderer.updateText(lines, colors);
+    }
+
+    // Recolor the wireframe and text to match the active theme
+    public setPalette(palette: HoloPalette) {
+        (this.wireframe.material as THREE.LineBasicMaterial).color.setHex(palette.normal);
+        (this.innerWireframe.material as THREE.LineBasicMaterial).color.setHex(palette.normal);
+        this.textRenderer.setPalette(palette);
     }
 
     public dispose() {

@@ -1,9 +1,20 @@
 import { ITheme } from '@xterm/xterm';
 
+// Colors for 3D cube mode: wireframe and normal text, dim (autocomplete) text, prompt line
+export interface HoloPalette {
+  normal: number;
+  dim: number;
+  prompt: number;
+}
+
 export interface RetroTheme extends ITheme {
   name: string;
   glow: string;  // For CRT text-shadow effect
+  holo: HoloPalette;  // For 3D cube mode
 }
+
+// Hologram green - the 3D mode's signature look
+const holoGreen: HoloPalette = { normal: 0x00ff66, dim: 0x447755, prompt: 0x00ffaa };
 
 // DOS Blue - Classic IBM PC style
 export const dosBlue: RetroTheme = {
@@ -15,6 +26,7 @@ export const dosBlue: RetroTheme = {
   selectionBackground: 'rgba(255, 255, 255, 0.3)',
   selectionForeground: '#FFFFFF',
   glow: 'rgba(204, 204, 204, 0.5)',
+  holo: holoGreen,
   black: '#0C0C0C',
   brightBlack: '#767676',
   red: '#C50F1F',
@@ -43,6 +55,7 @@ export const amber: RetroTheme = {
   selectionBackground: 'rgba(255, 176, 0, 0.3)',
   selectionForeground: '#FFB000',
   glow: 'rgba(255, 176, 0, 0.5)',
+  holo: { normal: 0xFFB000, dim: 0x776644, prompt: 0xFFCC00 },
   // Amber-tinted ANSI colors
   black: '#1A1200',
   brightBlack: '#5C4000',
@@ -72,6 +85,7 @@ export const greenPhosphor: RetroTheme = {
   selectionBackground: 'rgba(51, 255, 0, 0.3)',
   selectionForeground: '#33FF00',
   glow: 'rgba(51, 255, 0, 0.5)',
+  holo: { normal: 0x33FF00, dim: 0x557744, prompt: 0x66FF33 },
   // Green-tinted ANSI colors
   black: '#0D1A00',
   brightBlack: '#1A4000',
@@ -101,6 +115,7 @@ export const holographic: RetroTheme = {
   selectionBackground: 'rgba(0, 255, 102, 0.3)',
   selectionForeground: '#ffffff',
   glow: 'rgba(0, 255, 102, 0.7)', // Strong green glow
+  holo: holoGreen,
   // Green-tinted ANSI colors for holographic look
   black: '#0a1628',
   brightBlack: '#1a365d',

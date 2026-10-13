@@ -25,7 +25,10 @@ function applyThemeToCss(theme: RetroTheme) {
     document.documentElement.style.setProperty('--glow-color', theme.glow);
     document.documentElement.style.setProperty('--theme-background', theme.background || '#0000AA');
     document.documentElement.style.setProperty('--theme-foreground', theme.foreground || '#CCCCCC');
-    
+    document.documentElement.style.setProperty('--theme-cursor', theme.cursor || '#FFFFFF');
+    const { normal } = theme.holo;
+    document.documentElement.style.setProperty('--holo-rgb', `${normal >> 16}, ${(normal >> 8) & 0xff}, ${normal & 0xff}`);
+
     // Toggle holographic class for specific effects
     if (theme.name === 'Holographic') {
         document.body.classList.add('holographic');
@@ -80,14 +83,10 @@ if (terminalContainer) {
             currentTheme = themes[themeName];
             term.options.theme = currentTheme;
             applyThemeToCss(currentTheme);
+            holoCubeScene?.setPalette(currentTheme.holo);
             localStorage.setItem(STORAGE_KEY_THEME, themeName);
         }
     }
-
-    // Color constants for 3D rendering
-    const COLOR_NORMAL = 0x00ff66;      // Bright green for normal text
-    const COLOR_DIM = 0x447755;          // Muted grey-green for autocomplete/dim text
-    const COLOR_PROMPT = 0x00ffaa;       // Slightly cyan-green for prompt line
 
     // Function to extract terminal buffer as lines with color info
     interface TerminalLineData {
@@ -102,7 +101,9 @@ if (terminalContainer) {
         const colors: number[][] = [];
         const viewportRows = term.rows;
         const cursorY = buffer.cursorY;
-        
+        // 3D text colors: normal, dim (autocomplete) and prompt line
+        const { normal: COLOR_NORMAL, dim: COLOR_DIM, prompt: COLOR_PROMPT } = currentTheme.holo;
+
         // Get visible viewport lines
         for (let i = 0; i < viewportRows; i++) {
             const bufferLine = buffer.getLine(buffer.viewportY + i);
@@ -191,6 +192,7 @@ if (terminalContainer) {
                 holoCubeScene = initHoloCube(holoCubeContainer);
             }
             if (holoCubeScene) {
+                holoCubeScene.setPalette(currentTheme.holo);
                 holoCubeScene.start();
             }
 

@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { HoloPalette } from './themes';
 
 // Character definitions as 5x7 pixel patterns (each character is a 5-wide, 7-tall grid)
 // 1 = filled, 0 = empty
@@ -668,12 +669,18 @@ export class HoloTextRenderer {
             this.VOXEL_SIZE * 1.5 // Slight depth for 3D effect
         );
 
-        // Base glowing green material
+        // Base glowing material (hologram green until a theme palette is set)
         this.baseMaterial = new THREE.MeshBasicMaterial({
-            color: 0x00ff66,
+            color: this.baseColor,
             transparent: true,
             opacity: 0.9
         });
+    }
+
+    public setPalette(palette: HoloPalette) {
+        this.baseColor = palette.normal;
+        this.dimColor = palette.dim;
+        this.baseMaterial.color.setHex(palette.normal);
     }
 
     public updateText(lines: string[], colors?: number[][]) {
@@ -707,8 +714,9 @@ export class HoloTextRenderer {
         }
     }
 
-    // Muted color constant for dim/autocomplete text
-    private readonly COLOR_DIM = 0x447755;
+    // Base text color and muted color for dim/autocomplete text
+    private baseColor = 0x00ff66;
+    private dimColor = 0x447755;
 
     private createCharacterMesh(char: string, color?: number): CharacterMesh | null {
         const pattern = CHAR_PATTERNS[char];
@@ -722,9 +730,9 @@ export class HoloTextRenderer {
 
         // Create material (clone if different color)
         let material = this.baseMaterial;
-        if (color && color !== 0x00ff66) {
+        if (color && color !== this.baseColor) {
             // Dim/autocomplete text gets lower opacity too
-            const isDim = color === this.COLOR_DIM;
+            const isDim = color === this.dimColor;
             material = new THREE.MeshBasicMaterial({
                 color: color,
                 transparent: true,
@@ -759,7 +767,7 @@ export class HoloTextRenderer {
     private createDefaultCharMesh(color?: number): CharacterMesh {
         const group = new THREE.Group();
         let material = this.baseMaterial;
-        if (color && color !== 0x00ff66) {
+        if (color && color !== this.baseColor) {
             material = new THREE.MeshBasicMaterial({
                 color: color,
                 transparent: true,

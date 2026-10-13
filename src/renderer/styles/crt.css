@@ -3,6 +3,8 @@
     --glow-color: rgba(204, 204, 204, 0.5);
     --theme-background: #0000AA;
     --theme-foreground: #CCCCCC;
+    --theme-cursor: #FFFFFF;
+    --holo-rgb: 0, 255, 102;
 }
 
 .crt {
