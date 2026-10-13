@@ -14,4 +14,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
   startWindowResize: (edge: string) => ipcRenderer.send('window-resize-start', edge),
   moveWindowResize: () => ipcRenderer.send('window-resize-move'),
   endWindowResize: () => ipcRenderer.send('window-resize-end'),
+  // Folder listing for the 3D file graph
+  listDirectory: (dirPath: string) => ipcRenderer.invoke('fs-list-dir', dirPath),
 });

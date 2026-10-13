@@ -1,6 +1,7 @@
 import { app, BrowserWindow, ipcMain, screen, Rectangle, Point } from 'electron';
 import * as path from 'path';
 import { createPty } from './pty';
+import { listDirectory } from './files';
 
 let mainWindow: BrowserWindow | null = null;
 
@@ -97,6 +98,8 @@ app.on('ready', () => {
   ipcMain.on('window-resize-end', () => {
     resizeDrag = null;
   });
+
+  ipcMain.handle('fs-list-dir', (event, dirPath: string) => listDirectory(dirPath));
 });
 
 app.on('window-all-closed', () => {

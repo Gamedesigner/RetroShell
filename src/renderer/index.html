@@ -22,7 +22,13 @@
             </div>
         </div>
         <div id="terminal-container"></div>
-        <div id="holo-cube-container" class="hidden"></div>
+        <div id="holo-cube-container" class="hidden">
+            <div id="holo-mode-switch">
+                <button data-mode="cube" class="active" title="Terminal in the cube">CUBE</button>
+                <button data-mode="files" title="File graph of the current folder">FILES</button>
+            </div>
+            <div id="holo-prompt-line" class="hidden"></div>
+        </div>
         <div id="status-bar">
             <span id="date"></span>
             <span id="time"></span>

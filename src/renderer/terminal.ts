@@ -4,7 +4,7 @@ import { WebLinksAddon } from '@xterm/addon-web-links';
 import { themes, defaultTheme, ThemeName, RetroTheme } from './themes';
 import { soundManager } from './sounds';
 import { ElectronAPI } from '../shared/types';
-import { HoloCubeScene } from './holoCube';
+import { HoloCubeScene, HoloMode } from './holoCube';
 import './windowResize';
 
 declare const window: Window & { electronAPI: ElectronAPI };
@@ -41,6 +41,8 @@ function applyThemeToCss(theme: RetroTheme) {
 const terminalContainer = document.getElementById('terminal-container');
 const holoCubeContainer = document.getElementById('holo-cube-container');
 const cubeBtn = document.getElementById('cube-btn');
+const holoModeSwitch = document.getElementById('holo-mode-switch');
+const holoPromptLine = document.getElementById('holo-prompt-line');
 
 // Cube mode state
 let cubeModeActive = false;
@@ -175,6 +177,55 @@ if (terminalContainer) {
         };
     }
 
+    // The line the cursor is on, with wrapped rows joined back together
+    function getCursorLine(): string {
+        const buffer = term.buffer.active;
+        let row = buffer.baseY + buffer.cursorY;
+        while (row > 0 && buffer.getLine(row)?.isWrapped) row--;
+
+        const rows: string[] = [];
+        do {
+            rows.push(buffer.getLine(row)?.translateToString(false) ?? '');
+            row++;
+        } while (buffer.getLine(row)?.isWrapped);
+        return rows.join('').trimEnd();
+    }
+
+    // The shell's current folder, read from the PowerShell prompt ("PS C:\path>").
+    // Keeps the last one seen while the prompt is not showing, e.g. when a program is running.
+    let shellDirectory = '';
+    function getShellDirectory(): string {
+        const match = /^PS ([^>]+)>/.exec(getCursorLine());
+        if (match) shellDirectory = match[1];
+        return shellDirectory;
+    }
+
+    // Put a file's path on the command line, quoted for PowerShell when it needs it.
+    // The trailing space keeps several picks in a row apart.
+    function typePathAtPrompt(filePath: string) {
+        const text = /[\s'&;(){}$`,]/.test(filePath) ? `'${filePath.replace(/'/g, "''")}'` : filePath;
+        window.electronAPI.sendPtyInput(text + ' ');
+        soundManager.playKeyClick();
+    }
+
+    // Switch the 3D view between the terminal cube and the file graph
+    function setHoloMode(mode: HoloMode) {
+        if (!holoCubeScene) return;
+        holoCubeScene.setMode(mode, getShellDirectory());
+        holoModeSwitch?.querySelectorAll('button').forEach((button) => {
+            button.classList.toggle('active', button.dataset.mode === mode);
+        });
+        holoPromptLine?.classList.toggle('hidden', mode !== 'files');
+        syncTerminalToHolo();
+    }
+
+    holoModeSwitch?.querySelectorAll('button').forEach((button) => {
+        button.addEventListener('click', () => {
+            setHoloMode(button.dataset.mode as HoloMode);
+            button.blur(); // keep keystrokes going to the terminal
+        });
+    });
+
     // Cube mode toggle function
     function toggleCubeMode() {
         if (!holoCubeContainer || !terminalContainer) return;
@@ -191,6 +242,7 @@ if (terminalContainer) {
             if (!holoCubeScene) {
                 const { init: initHoloCube } = (window as any).holoCube;
                 holoCubeScene = initHoloCube(holoCubeContainer);
+                if (holoCubeScene) holoCubeScene.onFilePicked = typePathAtPrompt;
             }
             if (holoCubeScene) {
                 holoCubeScene.setPalette(currentTheme.holo);
@@ -229,6 +281,14 @@ if (terminalContainer) {
     // Sync terminal content to holographic display
     function syncTerminalToHolo() {
         if (!holoCubeScene || !cubeModeActive) return;
+
+        if (holoCubeScene.getMode() === 'files') {
+            // The cube is out of sight: show the input line and follow the shell's folder
+            if (holoPromptLine) holoPromptLine.textContent = getCursorLine();
+            holoCubeScene.showFolder(getShellDirectory());
+            return;
+        }
+
         const { lines, colors } = getTerminalLinesForHolo();
         holoCubeScene.updateText(lines, colors);
     }

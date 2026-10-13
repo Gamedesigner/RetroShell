@@ -683,6 +683,19 @@ export class HoloTextRenderer {
         this.baseMaterial.color.setHex(palette.normal);
     }
 
+    // Fade the text (0 = invisible, 1 = normal)
+    public setOpacity(fraction: number) {
+        if (fraction === this.opacity) return;
+        this.opacity = fraction;
+        this.baseMaterial.opacity = 0.9 * fraction;
+        for (const charMesh of this.characterMeshes) {
+            const material = charMesh.voxels[0].material as THREE.MeshBasicMaterial;
+            if (material !== this.baseMaterial) {
+                material.opacity = material.userData.opacity * fraction;
+            }
+        }
+    }
+
     public updateText(lines: string[], colors?: number[][]) {
         // Clear existing characters
         this.clearText();
@@ -717,6 +730,18 @@ export class HoloTextRenderer {
     // Base text color and muted color for dim/autocomplete text
     private baseColor = 0x00ff66;
     private dimColor = 0x447755;
+    private opacity = 1;
+
+    // Material for text that is not in the base color
+    private createColoredMaterial(color: number, opacity: number): THREE.MeshBasicMaterial {
+        const material = new THREE.MeshBasicMaterial({
+            color: color,
+            transparent: true,
+            opacity: opacity * this.opacity
+        });
+        material.userData.opacity = opacity;
+        return material;
+    }
 
     private createCharacterMesh(char: string, color?: number): CharacterMesh | null {
         const pattern = CHAR_PATTERNS[char];
@@ -733,11 +758,7 @@ export class HoloTextRenderer {
         if (color && color !== this.baseColor) {
             // Dim/autocomplete text gets lower opacity too
             const isDim = color === this.dimColor;
-            material = new THREE.MeshBasicMaterial({
-                color: color,
-                transparent: true,
-                opacity: isDim ? 0.5 : 0.9
-            });
+            material = this.createColoredMaterial(color, isDim ? 0.5 : 0.9);
         }
 
         // Create voxels for each pixel in the pattern
@@ -768,11 +789,7 @@ export class HoloTextRenderer {
         const group = new THREE.Group();
         let material = this.baseMaterial;
         if (color && color !== this.baseColor) {
-            material = new THREE.MeshBasicMaterial({
-                color: color,
-                transparent: true,
-                opacity: 0.9
-            });
+            material = this.createColoredMaterial(color, 0.9);
         }
         const voxel = new THREE.Mesh(this.voxelGeometry, material);
         group.add(voxel);

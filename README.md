@@ -13,6 +13,7 @@ A retro-styled PowerShell terminal for Windows, with CRT effects, keyboard sound
 - **CRT look** - scanlines, flicker and phosphor glow.
 - **Sound effects** - synthesized key clicks, spacebar, return and bell sounds. Can be switched off.
 - **3D mode** - the live terminal rendered as voxel text inside a rotating wireframe cube. You can keep typing while it is on.
+- **File graph** - in 3D mode, switch from CUBE to FILES and the cube bursts open into a floating graph of the shell's current folder. Folders open and close as you click them; clicking a file puts its path on the command line.
 
 ## Controls
 
@@ -22,6 +23,10 @@ A retro-styled PowerShell terminal for Windows, with CRT effects, keyboard sound
 | Open settings (theme, sound) | `Ctrl+,` or the `*` button |
 | Rotate the cube | Drag with the mouse |
 | Reset the cube | Double-click it |
+| Switch between cube and file graph | `CUBE` / `FILES` in the corner of the 3D view |
+| Open or close a folder in the graph | Click it |
+| Put a file's path on the command line | Click the file |
+| Rotate / zoom the graph | Drag / scroll |
 | Resize the window | Drag any edge or corner |
 | Move the window | Drag the title bar |
 
