@@ -217,9 +217,10 @@ if (terminalContainer) {
                 termBufferSyncInterval = null;
             }
 
-            // Refocus and resize terminal
+            // Refocus and resize terminal (the window may have been resized while in 3D)
             term.focus();
             fitAddon.fit();
+            window.electronAPI.resizePty(term.cols, term.rows);
 
             localStorage.setItem(STORAGE_KEY_CUBE_MODE, 'false');
         }

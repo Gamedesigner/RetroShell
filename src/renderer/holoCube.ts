@@ -124,6 +124,9 @@ export class HoloCubeScene {
         const width = this.container.clientWidth;
         const height = this.container.clientHeight;
 
+        // Hidden while in terminal mode - start() picks up the new size once shown
+        if (width === 0 || height === 0) return;
+
         this.camera.aspect = width / height;
         this.camera.updateProjectionMatrix();
         this.renderer.setSize(width, height);
@@ -131,6 +134,7 @@ export class HoloCubeScene {
 
     public start() {
         if (this.animationId !== null) return;
+        this.onResize();
         this.animate();
     }
 
