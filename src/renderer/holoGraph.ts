@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { HoloPalette } from './themes';
 import { FileKind, fileKind } from './fileKinds';
-import { ElectronAPI } from '../shared/types';
+import { DirectoryEntry, ElectronAPI } from '../shared/types';
 
 declare const window: Window & { electronAPI: ElectronAPI };
 
@@ -69,6 +69,31 @@ function createFileShapes(): Record<Exclude<FileKind, 'other'>, THREE.BufferGeom
     };
 }
 
+// Folders show how much they hold: the more items inside, the more faces.
+// A folder that could not be counted is drawn as the diamond.
+type FolderSize = 'few' | 'some' | 'many' | 'huge';
+
+function folderSize(itemCount: number | null): FolderSize {
+    if (itemCount === null) return 'some';
+    if (itemCount < 10) return 'few';
+    if (itemCount < 50) return 'some';
+    if (itemCount < 200) return 'many';
+    return 'huge';
+}
+
+function createFolderShapes(): Record<FolderSize, THREE.BufferGeometry> {
+    return {
+        // Pyramid
+        few: edgesOf(new THREE.TetrahedronGeometry(0.1)),
+        // Diamond
+        some: edgesOf(new THREE.OctahedronGeometry(0.085)),
+        // 20-sided
+        many: edgesOf(new THREE.IcosahedronGeometry(0.09)),
+        // Sphere
+        huge: edgesOf(new THREE.SphereGeometry(0.095, 10, 6)),
+    };
+}
+
 // File shapes keep one pose towards the viewer so each always looks the same:
 // solids are turned to show their depth, flat ones only slightly
 const SOLID_POSE = new THREE.Quaternion().setFromEuler(new THREE.Euler(0.45, 0.6, 0));
@@ -80,6 +105,7 @@ interface GraphNode {
     name: string;
     kind: NodeKind;
     fileKind: FileKind;
+    itemCount: number | null;   // items directly inside a folder, when known
     more: boolean;              // a "+N more" note that reveals the next batch
     parent: GraphNode | null;
     children: GraphNode[];
@@ -132,7 +158,7 @@ export class HoloFileGraph {
 
     private palette: HoloPalette = { normal: 0x00ff66, dim: 0x447755, prompt: 0x00ffaa };
 
-    private folderGeometry = new THREE.EdgesGeometry(new THREE.OctahedronGeometry(0.085));
+    private folderShapes = createFolderShapes();
     private coreGeometry = new THREE.OctahedronGeometry(0.045);
     private fileGeometry = new THREE.BoxGeometry(0.035, 0.035, 0.035);
     private fileShapes = createFileShapes();
@@ -181,14 +207,14 @@ export class HoloFileGraph {
         if (this.loadingPath !== null && this.samePath(this.loadingPath, dirPath)) return;
 
         this.loadingPath = dirPath;
-        const listing = await window.electronAPI.listDirectory(dirPath);
+        const listing = await window.electronAPI.listDirectory(dirPath, BATCH_SIZE);
         // A newer request took over while this one was being read
         if (this.loadingPath !== dirPath) return;
         this.loadingPath = null;
         if (this.root && this.samePath(this.root.path, listing.path)) return;
 
         this.clear();
-        this.root = this.createNode(listing.path, listing.path, 'folder', null);
+        this.root = this.createNode(listing.path, listing.path, 'folder', null, listing.error ? null : listing.entries.length);
         this.rootParent = listing.parent;
         this.root.expanded = true;
         this.populate(this.root, listing.entries, listing.error);
@@ -199,16 +225,19 @@ export class HoloFileGraph {
         return tidy(a) === tidy(b);
     }
 
-    private createNode(nodePath: string, name: string, kind: NodeKind, parent: GraphNode | null): GraphNode {
+    private createNode(
+        nodePath: string, name: string, kind: NodeKind, parent: GraphNode | null, itemCount: number | null = null
+    ): GraphNode {
         const object = new THREE.Group();
         const kindOfFile = kind === 'file' ? fileKind(name) : 'other';
+        const folderShape = this.folderShapes[folderSize(itemCount)];
 
         let marker: THREE.Object3D;
         let core: THREE.Mesh | null = null;
         let ring: THREE.LineSegments | null = null;
         if (!parent) {
             // The root: larger, ringed and drawn on top
-            marker = new THREE.LineSegments(this.folderGeometry, this.rootMaterial);
+            marker = new THREE.LineSegments(folderShape, this.rootMaterial);
             core = new THREE.Mesh(this.coreGeometry, this.rootCoreMaterial);
             ring = new THREE.LineSegments(this.ringGeometry, this.rootMaterial);
             for (const part of [marker, core, ring]) part.renderOrder = 10;
@@ -216,7 +245,7 @@ export class HoloFileGraph {
             core.visible = false;
             object.add(core, ring);
         } else if (kind === 'folder') {
-            marker = new THREE.LineSegments(this.folderGeometry, this.folderMaterial);
+            marker = new THREE.LineSegments(folderShape, this.folderMaterial);
             core = new THREE.Mesh(this.coreGeometry, this.coreMaterial);
             core.visible = false;
             object.add(core);
@@ -246,6 +275,7 @@ export class HoloFileGraph {
             name,
             kind,
             fileKind: kindOfFile,
+            itemCount: kind === 'folder' ? itemCount : null,
             more: false,
             parent,
             children: [],
@@ -260,7 +290,7 @@ export class HoloFileGraph {
             ring,
             scale,
             // The root reaches out to its ring; plain dots are much smaller than shapes
-            radius: !parent ? 0.21 : kind === 'folder' ? 0.085 : kindOfFile === 'other' ? 0.03 : 0.07,
+            radius: !parent ? 0.21 : kind === 'folder' ? 0.095 : kindOfFile === 'other' ? 0.03 : 0.07,
             label,
             labelAlpha: 0,
             hit,
@@ -328,26 +358,29 @@ export class HoloFileGraph {
         return sprite;
     }
 
-    // Add a folder's entries as child nodes: folders first, then files, alphabetical
-    private populate(folder: GraphNode, entries: { name: string; isDirectory: boolean }[], error?: string) {
+    // Add a folder's entries as child nodes, in the order the listing gives them
+    // (folders first, then files, alphabetical)
+    private populate(folder: GraphNode, entries: DirectoryEntry[], error?: string) {
         const separator = folder.path.includes('/') && !folder.path.includes('\\') ? '/' : '\\';
         const base = folder.path.endsWith(separator) ? folder.path : folder.path + separator;
 
-        const sorted = [...entries].sort((a, b) =>
-            Number(b.isDirectory) - Number(a.isDirectory) || a.name.localeCompare(b.name, undefined, { sensitivity: 'base' })
-        );
-
-        for (const entry of sorted.slice(0, folder.shown)) {
-            this.createNode(base + entry.name, entry.name, entry.isDirectory ? 'folder' : 'file', folder);
+        for (const entry of entries.slice(0, folder.shown)) {
+            const kind = entry.isDirectory ? 'folder' : 'file';
+            this.createNode(base + entry.name, entry.name, kind, folder, entry.itemCount ?? null);
         }
 
         if (error) {
             this.createNode(folder.path, '(no access)', 'note', folder);
-        } else if (sorted.length === 0) {
-            this.createNode(folder.path, '(empty)', 'note', folder);
-        } else if (sorted.length > folder.shown) {
-            const more = this.createNode(folder.path, `+${sorted.length - folder.shown} more`, 'note', folder);
-            more.more = true;
+        } else {
+            // Now that it is open the folder's size is known exactly
+            folder.itemCount = entries.length;
+            (folder.marker as THREE.LineSegments).geometry = this.folderShapes[folderSize(entries.length)];
+            if (entries.length === 0) {
+                this.createNode(folder.path, '(empty)', 'note', folder);
+            } else if (entries.length > folder.shown) {
+                const more = this.createNode(folder.path, `+${entries.length - folder.shown} more`, 'note', folder);
+                more.more = true;
+            }
         }
 
         if (folder.core) folder.core.visible = true;
@@ -355,7 +388,7 @@ export class HoloFileGraph {
 
     private async expand(folder: GraphNode) {
         folder.expanded = true;
-        const listing = await window.electronAPI.listDirectory(folder.path);
+        const listing = await window.electronAPI.listDirectory(folder.path, folder.shown);
         // The folder may have been collapsed or removed while the listing was read
         if (!folder.expanded || !this.nodes.includes(folder)) return;
         this.removeChildren(folder);
@@ -426,7 +459,8 @@ export class HoloFileGraph {
         this.hovered = node;
         if (!node) return;
         node.marker.scale.setScalar(node.scale * HOVER_SCALE);
-        this.hoverLabel = this.createLabel(node.name, node.kind, Infinity, true);
+        const items = node.itemCount === null ? '' : `  (${node.itemCount} ${node.itemCount === 1 ? 'item' : 'items'})`;
+        this.hoverLabel = this.createLabel(node.name + items, node.kind, Infinity, true);
         this.hoverLabel.material.depthTest = false;
         this.hoverLabel.renderOrder = 20;
         this.group.add(this.hoverLabel);
@@ -645,8 +679,8 @@ export class HoloFileGraph {
         this.group.parent?.remove(this.group);
         this.edges.geometry.dispose();
         for (const item of [
-            this.folderGeometry, this.coreGeometry, this.fileGeometry, this.hitGeometry, this.ringGeometry,
-            ...Object.values(this.fileShapes),
+            this.coreGeometry, this.fileGeometry, this.hitGeometry, this.ringGeometry,
+            ...Object.values(this.folderShapes), ...Object.values(this.fileShapes),
             this.rootMaterial, this.rootCoreMaterial,
             this.folderMaterial, this.shapeMaterial, this.coreMaterial, this.fileMaterial, this.noteMaterial,
             this.hitMaterial, this.edgeMaterial

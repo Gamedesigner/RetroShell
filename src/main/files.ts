@@ -2,7 +2,7 @@ import { execFile } from 'child_process';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { DirectoryListing, FileInfo } from '../shared/types';
+import { DirectoryEntry, DirectoryListing, FileInfo } from '../shared/types';
 
 // Names that `dir` would show. Windows hides entries carrying the Hidden or
 // System attribute (.git, NTUSER.DAT, the legacy profile junctions...), and
@@ -26,9 +26,28 @@ function visibleNamesWindows(dirPath: string): Promise<Set<string> | null> {
   });
 }
 
-// List a folder for the 3D file graph. Falls back to the home folder when the
-// path is not usable (e.g. the shell is sitting in a registry drive).
-export async function listDirectory(dirPath: string): Promise<DirectoryListing> {
+// Entries Windows normally hides inside ordinary folders
+const USUALLY_HIDDEN = new Set(['desktop.ini', 'thumbs.db', '.git', '$recycle.bin', 'system volume information']);
+
+// Roughly how many items a folder shows. A `dir` call per folder would be exact
+// but far too slow for a whole listing, so this goes by what is normally hidden.
+async function countItems(dirPath: string): Promise<number | undefined> {
+  try {
+    const dirents = await fs.promises.readdir(dirPath, { withFileTypes: true });
+    if (process.platform !== 'win32') {
+      return dirents.filter((d) => !d.name.startsWith('.')).length;
+    }
+    // The hidden legacy junctions ("My Music" and friends) read as symbolic links
+    return dirents.filter((d) => !d.isSymbolicLink() && !USUALLY_HIDDEN.has(d.name.toLowerCase())).length;
+  } catch {
+    return undefined;
+  }
+}
+
+// List a folder for the 3D file graph: folders first, then files, alphabetical.
+// The first `countFirst` entries also get their item counts. Falls back to the
+// home folder when the path is not usable (e.g. the shell is in a registry drive).
+export async function listDirectory(dirPath: string, countFirst: number = 0): Promise<DirectoryListing> {
   const isWindows = process.platform === 'win32';
   const target = dirPath && path.isAbsolute(dirPath) ? path.normalize(dirPath) : os.homedir();
   const parent = path.dirname(target) !== target ? path.dirname(target) : null;
@@ -44,13 +63,21 @@ export async function listDirectory(dirPath: string): Promise<DirectoryListing> 
       return isWindows || !d.name.startsWith('.');
     });
 
-    const entries = await Promise.all(shown.map(async (d) => {
+    const entries: DirectoryEntry[] = await Promise.all(shown.map(async (d) => {
       let isDirectory = d.isDirectory();
       if (d.isSymbolicLink()) {
         // Follow links and junctions to see what they point at
         isDirectory = await fs.promises.stat(path.join(target, d.name)).then((s) => s.isDirectory(), () => false);
       }
       return { name: d.name, isDirectory };
+    }));
+
+    entries.sort((a, b) =>
+      Number(b.isDirectory) - Number(a.isDirectory) || a.name.localeCompare(b.name, undefined, { sensitivity: 'base' })
+    );
+
+    await Promise.all(entries.slice(0, countFirst).map(async (entry) => {
+      if (entry.isDirectory) entry.itemCount = await countItems(path.join(target, entry.name));
     }));
 
     return { path: target, parent, entries };

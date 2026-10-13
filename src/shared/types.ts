@@ -1,6 +1,7 @@
 export interface DirectoryEntry {
   name: string;
   isDirectory: boolean;
+  itemCount?: number; // items directly inside a folder, when it was counted
 }
 
 export interface DirectoryListing {
@@ -26,7 +27,7 @@ export interface ElectronAPI {
   startWindowResize: (edge: string) => void;
   moveWindowResize: () => void;
   endWindowResize: () => void;
-  listDirectory: (dirPath: string) => Promise<DirectoryListing>;
+  listDirectory: (dirPath: string, countFirst?: number) => Promise<DirectoryListing>;
   getFileInfo: (filePath: string) => Promise<FileInfo | null>;
   showInExplorer: (filePath: string) => void;
 }

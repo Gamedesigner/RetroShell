@@ -41,9 +41,19 @@ A retro-styled PowerShell terminal for Windows, with CRT effects, keyboard sound
 
 The graph starts at the shell's current folder and follows it when you `cd`. The file details panel can also re-centre the graph on the file's folder or show the file in Windows Explorer. Labels are hidden where they would overlap; zoom in or hover to see more.
 
-| Shape | Kind of file |
+Folders change shape with how much is directly inside them, and hovering one shows the exact count. The root has a ring around it.
+
+| Folder shape | Items inside |
 | --- | --- |
-| Diamond | Folder (the root has a ring around it) |
+| Pyramid | Under 10 |
+| Diamond | 10 - 49 |
+| 20-sided | 50 - 199 |
+| Sphere | 200 or more |
+
+Files are smaller and drawn in the text color rather than the folder color:
+
+| File shape | Kind of file |
+| --- | --- |
 | Cube | Code |
 | Pyramid | Data / config |
 | Upright page | Document |

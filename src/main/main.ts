@@ -104,7 +104,7 @@ app.on('ready', () => {
     resizeDrag = null;
   });
 
-  ipcMain.handle('fs-list-dir', (event, dirPath: string) => listDirectory(dirPath));
+  ipcMain.handle('fs-list-dir', (event, dirPath: string, countFirst?: number) => listDirectory(dirPath, countFirst));
 
   ipcMain.handle('fs-file-info', (event, filePath: string) => fileInfo(filePath));
 
