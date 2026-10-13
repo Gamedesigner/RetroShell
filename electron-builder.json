@@ -1,7 +1,7 @@
 {
   "$schema": "https://raw.githubusercontent.com/electron-userland/electron-builder/master/packages/app-builder-lib/scheme.json",
   "appId": "com.retrosystems.retroshell",
-  "productName": "Retro Shell",
+  "productName": "RetroShell",
   "directories": {
     "output": "release",
     "buildResources": "assets"
@@ -48,7 +48,7 @@
     "installerHeaderIcon": "assets/icon.ico",
     "createDesktopShortcut": true,
     "createStartMenuShortcut": true,
-    "shortcutName": "Retro Shell"
+    "shortcutName": "RetroShell"
   },
   "portable": {
     "artifactName": "${productName}-${version}-portable.exe"

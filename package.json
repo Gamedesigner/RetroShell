@@ -1,5 +1,5 @@
 {
-  "name": "retro-shell",
+  "name": "retroshell",
   "version": "1.0.0",
   "description": "A retro-styled PowerShell terminal",
   "main": "dist/main/main.js",
