@@ -144,6 +144,22 @@ body, html {
     color: var(--theme-foreground);
 }
 
+/* Window resize handles - a transparent frameless window gets no native resize border */
+.resize-handle {
+    position: fixed;
+    z-index: 2000;
+    -webkit-app-region: no-drag;
+}
+
+.resize-handle[data-edge="n"]  { top: 0; left: 10px; right: 10px; height: 5px; cursor: ns-resize; }
+.resize-handle[data-edge="s"]  { bottom: 0; left: 10px; right: 10px; height: 5px; cursor: ns-resize; }
+.resize-handle[data-edge="w"]  { left: 0; top: 10px; bottom: 10px; width: 5px; cursor: ew-resize; }
+.resize-handle[data-edge="e"]  { right: 0; top: 10px; bottom: 10px; width: 5px; cursor: ew-resize; }
+.resize-handle[data-edge="nw"] { top: 0; left: 0; width: 10px; height: 10px; cursor: nwse-resize; }
+.resize-handle[data-edge="se"] { bottom: 0; right: 0; width: 10px; height: 10px; cursor: nwse-resize; }
+.resize-handle[data-edge="ne"] { top: 0; right: 0; width: 10px; height: 10px; cursor: nesw-resize; }
+.resize-handle[data-edge="sw"] { bottom: 0; left: 0; width: 10px; height: 10px; cursor: nesw-resize; }
+
 /* Holographic Sci-Fi Window Frame */
 .holographic #window-frame {
     background: rgba(10, 22, 40, 0.95);

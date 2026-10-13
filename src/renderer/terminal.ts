@@ -5,6 +5,7 @@ import { themes, defaultTheme, ThemeName, RetroTheme } from './themes';
 import { soundManager } from './sounds';
 import { ElectronAPI } from '../shared/types';
 import { HoloCubeScene } from './holoCube';
+import './windowResize';
 
 declare const window: Window & { electronAPI: ElectronAPI };
 

@@ -1,8 +1,11 @@
-import { app, BrowserWindow, ipcMain } from 'electron';
+import { app, BrowserWindow, ipcMain, screen, Rectangle, Point } from 'electron';
 import * as path from 'path';
 import { createPty } from './pty';
 
 let mainWindow: BrowserWindow | null = null;
+
+// Active edge drag from the renderer's resize handles
+let resizeDrag: { edge: string; startBounds: Rectangle; startCursor: Point } | null = null;
 
 function createWindow() {
   mainWindow = new BrowserWindow({
@@ -56,6 +59,43 @@ app.on('ready', () => {
     } else {
       mainWindow?.maximize();
     }
+  });
+
+  // A transparent frameless window has no native resize border on Windows,
+  // so the renderer's edge handles drive the bounds from here.
+  ipcMain.on('window-resize-start', (event, edge: string) => {
+    if (!mainWindow || mainWindow.isMaximized()) return;
+    resizeDrag = {
+      edge,
+      startBounds: mainWindow.getBounds(),
+      startCursor: screen.getCursorScreenPoint(),
+    };
+  });
+
+  ipcMain.on('window-resize-move', () => {
+    if (!mainWindow || !resizeDrag) return;
+    const { edge, startBounds, startCursor } = resizeDrag;
+    const cursor = screen.getCursorScreenPoint();
+    const dx = cursor.x - startCursor.x;
+    const dy = cursor.y - startCursor.y;
+    const [minWidth, minHeight] = mainWindow.getMinimumSize();
+
+    let { x, y, width, height } = startBounds;
+    if (edge.includes('e')) width = Math.max(minWidth, startBounds.width + dx);
+    if (edge.includes('s')) height = Math.max(minHeight, startBounds.height + dy);
+    if (edge.includes('w')) {
+      width = Math.max(minWidth, startBounds.width - dx);
+      x = startBounds.x + startBounds.width - width;
+    }
+    if (edge.includes('n')) {
+      height = Math.max(minHeight, startBounds.height - dy);
+      y = startBounds.y + startBounds.height - height;
+    }
+    mainWindow.setBounds({ x, y, width, height });
+  });
+
+  ipcMain.on('window-resize-end', () => {
+    resizeDrag = null;
   });
 });
 

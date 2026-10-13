@@ -10,4 +10,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   closeWindow: () => ipcRenderer.send('window-close'),
   minimizeWindow: () => ipcRenderer.send('window-minimize'),
   maximizeWindow: () => ipcRenderer.send('window-maximize'),
+  // Edge/corner resize handles, since a transparent frameless window has no native resize border
+  startWindowResize: (edge: string) => ipcRenderer.send('window-resize-start', edge),
+  moveWindowResize: () => ipcRenderer.send('window-resize-move'),
+  endWindowResize: () => ipcRenderer.send('window-resize-end'),
 });

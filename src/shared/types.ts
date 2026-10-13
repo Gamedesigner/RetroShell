@@ -5,6 +5,9 @@ export interface ElectronAPI {
   closeWindow: () => void;
   minimizeWindow: () => void;
   maximizeWindow: () => void;
+  startWindowResize: (edge: string) => void;
+  moveWindowResize: () => void;
+  endWindowResize: () => void;
 }
 
 declare global {
