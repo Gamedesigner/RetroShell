@@ -467,13 +467,14 @@ export class HoloLabScene {
         this.texture.needsUpdate = true;
     }
 
-    // Boot banner typed out line by line
+    // Boot banner typed out line by line, in the middle of the display where the
+    // shot over the shoulder always shows it
     private drawBanner(t: number, now: number) {
         const banner = ['RetroShell (c) 2026 Retro Systems.', 'All rights reserved.', '', 'RS-DOS Version 1.0'];
         this.beginFrame();
         this.setFont();
         let budget = Math.floor(t * 70);
-        let row = 0;
+        let row = Math.floor((LAB_ROWS - banner.length) / 2) - 2;
         for (const line of banner) {
             const shown = line.slice(0, Math.max(0, budget));
             budget -= line.length;
