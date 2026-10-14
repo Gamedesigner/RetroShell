@@ -1,9 +1,16 @@
 import * as THREE from 'three';
 import { LAB_COLS, LAB_ROWS } from './labSize';
+import { HoloPalette } from './themes';
 
-// LAB mode: the terminal on a scientist's holographic display, in a lab drawn in
-// the flat-polygon style of the 1991 game Another World (Out of This World).
-// Everything is flat colour with no lighting, the way the game was drawn.
+// LAB mode: the terminal (or the file graph) on a scientist's holographic display,
+// in a lab drawn in the flat-polygon style of the 1991 game Another World (Out of
+// This World). The room is flat colour with no lighting, the way the game was
+// drawn; the scientist is low-poly and flat-shaded so he holds up from any angle.
+
+export type LabContent = 'terminal' | 'files';
+
+// The file graph in the display's own green
+export const LAB_PALETTE: HoloPalette = { normal: 0x8ff08a, dim: 0x3f8f3f, prompt: 0xd2ffc8 };
 
 const COLORS = {
     wall: 0x0c1a3d,
@@ -19,13 +26,12 @@ const COLORS = {
     boxEdge: 0x5fd35f,
     particle: 0xb6e35a,
     hair: 0xc41a10,
-    hairLight: 0xe63c1e,
-    hairDark: 0x86120a,
     skin: 0xe0a07a,
-    skinShade: 0xb8765a,
-    ear: 0xcc8763,
-    shirt: 0x131b3b,
-    shirtLight: 0x1d2a55,
+    shirt: 0x2a3560,
+    trousers: 0x1a2140,
+    chair: 0x24365f,
+    chairDark: 0x16223f,
+    keyboard: 0x0e1a36,
 };
 const INDICATOR_COLORS = [0x5ff2f2, 0xffffff, 0x5ff2f2, 0xe24a3a, 0x5ff2f2, 0xffffff];
 
@@ -33,16 +39,27 @@ const TEXT_COLOR = '#a8f0a2';
 const TEXT_DIM = 'rgba(130, 225, 130, 0.45)';
 const TEXT_FONT = '"Perfect DOS VGA 437", Consolas, monospace';
 
-// The display box, floating over the console
-const BOX_SIZE = new THREE.Vector3(3.2, 2.2, 1.6);
-const BOX_CENTER = new THREE.Vector3(0, 0.35, 0);
+// The display box, floating over the console. The file graph is scaled to stay
+// within LAB_GRAPH_FIT of its centre.
+const BOX_SIZE = new THREE.Vector3(3.2, 2.2, 2.2);
+export const LAB_BOX_CENTER = new THREE.Vector3(0, 0.35, 0);
+export const LAB_GRAPH_FIT = 1.0;
 
-// Over the scientist's left shoulder, looking across at the box. His head sits
-// in the left third of the frame, close to the camera.
-const CAMERA_POSITION = new THREE.Vector3(-2.5, 0.85, 4.2);
-const CAMERA_TARGET = new THREE.Vector3(0.35, 0.2, 0);
-const HEAD_POSITION = new THREE.Vector3(-2.25, 0.62, 2.77);
-const HEAD_SCALE = 0.56;
+// The scientist's chair, in front of the console (1 unit is about a metre)
+const SEAT_POSITION = new THREE.Vector3(-0.9, -1.0, 2.15);
+
+// The camera orbits this point. Home is over the scientist's shoulder, his head
+// in the left third of the frame and the display filling the rest.
+const ORBIT_PIVOT = new THREE.Vector3(0.3, 0.2, 0.4);
+const HOME_CAMERA = new THREE.Vector3(-0.94, -0.02, 3.54);
+const YAW_RANGE = THREE.MathUtils.degToRad(60);
+const PITCH_DOWN = THREE.MathUtils.degToRad(15);
+const PITCH_UP = THREE.MathUtils.degToRad(25);
+const ZOOM_RANGE = { min: 2.6, max: 8 };
+// Swinging away from home pulls the camera back to this distance, so a side
+// view takes in the whole box instead of staring into one wall of it
+const SWING_RADIUS = 5.2;
+const FLOOR_CLEARANCE = -1.25;
 
 // Boot sequence timing, in seconds after entering the lab
 const BOOT_ID_END = 1.7;
@@ -56,13 +73,20 @@ function flat(color: number, opacity: number = 1): THREE.MeshBasicMaterial {
     return new THREE.MeshBasicMaterial({ color, transparent: opacity < 1, opacity, side: THREE.DoubleSide });
 }
 
-// A flat polygon from [x, y] pairs
-function polygon(points: number[][], color: number, z: number = 0): THREE.Mesh {
-    const shape = new THREE.Shape(points.map(([x, y]) => new THREE.Vector2(x, y)));
-    const mesh = new THREE.Mesh(new THREE.ShapeGeometry(shape), flat(color));
-    mesh.position.z = z;
-    return mesh;
+// Camera placement around the pivot
+interface Orbit {
+    yaw: number;
+    pitch: number;
+    radius: number;
 }
+
+function orbitOf(position: THREE.Vector3): Orbit {
+    const offset = position.clone().sub(ORBIT_PIVOT);
+    const radius = offset.length();
+    return { yaw: Math.atan2(offset.x, offset.z), pitch: Math.asin(offset.y / radius), radius };
+}
+
+const HOME_ORBIT = orbitOf(HOME_CAMERA);
 
 export class HoloLabScene {
     public readonly group = new THREE.Group();
@@ -70,15 +94,20 @@ export class HoloLabScene {
     private canvas = document.createElement('canvas');
     private ctx: CanvasRenderingContext2D;
     private texture: THREE.CanvasTexture;
+    private screen!: THREE.Mesh;
     private particle: THREE.Mesh;
     private indicators: THREE.Mesh[] = [];
+    private content: LabContent = 'terminal';
+
+    // Where the camera is heading and where it is now, eased towards it
+    private orbitGoal: Orbit = { ...HOME_ORBIT };
+    private orbitNow: Orbit = { ...HOME_ORBIT };
 
     private lines: string[] = [];
     private cursor = { row: 0, col: 0 };
     private drawnKey = '';
     private bootStart = -Infinity;
     private greeting = 'Good evening.';
-    private nudge = { x: 0, y: 0 };
 
     constructor(parent: THREE.Object3D) {
         this.canvas.width = CANVAS_WIDTH;
@@ -91,6 +120,17 @@ export class HoloLabScene {
         this.buildConsole();
         this.particle = this.buildBox();
         this.buildScientist();
+
+        // Only the scientist is lit: cool room light from behind him, and the
+        // display's green glow on his face. (three.js lights need about pi times
+        // the intensity for a surface to show its full colour.)
+        this.group.add(new THREE.AmbientLight(0x8090c0, 1.6));
+        const glow = new THREE.DirectionalLight(0xb0f5aa, 3.5);
+        glow.position.set(LAB_BOX_CENTER.x, LAB_BOX_CENTER.y + 0.4, LAB_BOX_CENTER.z + 0.6);
+        glow.target.position.set(SEAT_POSITION.x, SEAT_POSITION.y + 0.9, SEAT_POSITION.z);
+        const fill = new THREE.DirectionalLight(0xa0b0e0, 3.0);
+        fill.position.set(-1, 4, 8);
+        this.group.add(glow, glow.target, fill);
 
         this.group.visible = false;
         parent.add(this.group);
@@ -162,7 +202,7 @@ export class HoloLabScene {
     // Returns the drifting particle inside it.
     private buildBox(): THREE.Mesh {
         const box = new THREE.Group();
-        box.position.copy(BOX_CENTER);
+        box.position.copy(LAB_BOX_CENTER);
 
         const geometry = new THREE.BoxGeometry(BOX_SIZE.x, BOX_SIZE.y, BOX_SIZE.z);
         const faces = new THREE.Mesh(geometry, new THREE.MeshBasicMaterial({
@@ -180,6 +220,7 @@ export class HoloLabScene {
         screen.position.z = BOX_SIZE.z / 2 - 0.04;
         screen.renderOrder = 1;
         box.add(screen);
+        this.screen = screen;
 
         // A shard of the experiment drifting inside the box
         const particle = new THREE.Mesh(
@@ -192,33 +233,65 @@ export class HoloLabScene {
         return particle;
     }
 
-    // The scientist, seen from behind his left shoulder: flat polygons on a plane
-    // that faces the camera, like the game's 2D vector art
+    // The scientist in his chair at the console: low-poly solids with flat shading,
+    // built facing +z with the seat top at y = 0 and the floor at y = -0.45
     private buildScientist() {
         const figure = new THREE.Group();
-        const layer = (points: number[][], color: number, order: number) => figure.add(polygon(points, color, order * 0.002));
+        const part = (
+            geometry: THREE.BufferGeometry, color: number,
+            position: [number, number, number], rotation: [number, number, number] = [0, 0, 0], scale: [number, number, number] = [1, 1, 1]
+        ) => {
+            const mesh = new THREE.Mesh(geometry, new THREE.MeshLambertMaterial({ color, flatShading: true }));
+            mesh.position.set(...position);
+            mesh.rotation.set(...rotation);
+            mesh.scale.set(...scale);
+            figure.add(mesh);
+        };
 
-        // Shoulders and back
-        layer([[-1.1, -1.4], [-1.05, -0.78], [-0.62, -0.5], [-0.12, -0.46], [0.3, -0.58], [0.62, -0.95], [0.75, -1.4]], COLORS.shirt, 0);
-        layer([[-0.62, -0.5], [-0.12, -0.46], [-0.2, -0.7], [-0.75, -0.85]], COLORS.shirtLight, 1);
-        // Neck, in the shadow of the head
-        layer([[-0.15, -0.5], [0.11, -0.52], [0.15, -0.27], [-0.1, -0.23]], COLORS.skinShade, 2);
-        // Head, face turned away towards the display
-        layer([[-0.34, 0.02], [-0.3, -0.26], [-0.12, -0.38], [0.14, -0.36], [0.3, -0.2], [0.36, 0.02], [0.3, 0.22], [-0.24, 0.26]], COLORS.skin, 3);
-        layer([[0.14, -0.36], [0.3, -0.2], [0.36, 0.02], [0.22, -0.02], [0.12, -0.2]], COLORS.skinShade, 4);
-        // Ear
-        layer([[-0.05, 0.04], [0.06, 0.06], [0.09, -0.08], [0.01, -0.15], [-0.06, -0.07]], COLORS.ear, 5);
-        // Hair: a swept, spiky red mass in three tones
-        layer([[-0.44, -0.08], [-0.48, 0.2], [-0.4, 0.44], [-0.2, 0.6], [0.06, 0.64], [0.3, 0.55], [0.44, 0.36],
-            [0.42, 0.14], [0.28, 0.2], [0.16, 0.08], [0.04, 0.12], [-0.12, 0.0], [-0.22, -0.2], [-0.32, -0.16]], COLORS.hair, 6);
-        layer([[-0.48, 0.2], [-0.4, 0.44], [-0.2, 0.6], [-0.26, 0.38], [-0.36, 0.18]], COLORS.hairDark, 7);
-        layer([[0.06, 0.64], [0.3, 0.55], [0.44, 0.36], [0.24, 0.42], [0.08, 0.5]], COLORS.hairLight, 7);
-        layer([[-0.12, 0.0], [0.04, 0.12], [0.16, 0.08], [0.06, 0.3], [-0.1, 0.26]], COLORS.hairDark, 7);
-        layer([[0.28, 0.2], [0.42, 0.14], [0.5, 0.26], [0.44, 0.36]], COLORS.hairLight, 8);
+        // Chair
+        part(new THREE.BoxGeometry(0.5, 0.07, 0.48), COLORS.chair, [0, -0.035, 0]);
+        // A low back, so his shoulders show above it
+        part(new THREE.BoxGeometry(0.42, 0.3, 0.05), COLORS.chair, [0, 0.21, -0.26], [-0.12, 0, 0]);
+        part(new THREE.CylinderGeometry(0.035, 0.035, 0.36, 6), COLORS.chairDark, [0, -0.25, 0]);
+        part(new THREE.CylinderGeometry(0.26, 0.26, 0.04, 5), COLORS.chairDark, [0, -0.43, 0]);
 
-        figure.position.copy(HEAD_POSITION);
-        figure.scale.setScalar(HEAD_SCALE);
-        figure.lookAt(CAMERA_POSITION);
+        // Legs
+        part(new THREE.BoxGeometry(0.36, 0.13, 0.46), COLORS.trousers, [0, 0.07, 0.12]);
+        part(new THREE.BoxGeometry(0.32, 0.42, 0.12), COLORS.trousers, [0, -0.2, 0.36]);
+
+        // Body, leaning a little towards the display
+        part(new THREE.CylinderGeometry(0.17, 0.15, 0.48, 6), COLORS.shirt, [0, 0.38, -0.02], [0.1, 0, 0], [1, 1, 0.72]);
+        part(new THREE.BoxGeometry(0.46, 0.11, 0.24), COLORS.shirt, [0, 0.61, 0], [0.1, 0, 0]);
+
+        // Arms reaching forward to the keyboard
+        for (const side of [-1, 1]) {
+            part(new THREE.BoxGeometry(0.1, 0.32, 0.1), COLORS.shirt, [side * 0.25, 0.47, 0.08], [-0.55, 0, side * 0.08]);
+            part(new THREE.BoxGeometry(0.09, 0.09, 0.32), COLORS.shirt, [side * 0.21, 0.33, 0.33]);
+            part(new THREE.BoxGeometry(0.08, 0.04, 0.1), COLORS.skin, [side * 0.18, 0.32, 0.53]);
+        }
+
+        // Neck, head, nose and ears
+        part(new THREE.CylinderGeometry(0.055, 0.065, 0.12, 6), COLORS.skin, [0, 0.72, 0.01]);
+        part(new THREE.IcosahedronGeometry(0.15, 1), COLORS.skin, [0, 0.88, 0.02], [0, 0, 0], [0.9, 1.12, 1]);
+        part(new THREE.TetrahedronGeometry(0.035), COLORS.skin, [0, 0.87, 0.17], [0.6, 0.8, 0]);
+        for (const side of [-1, 1]) {
+            part(new THREE.BoxGeometry(0.03, 0.065, 0.05), COLORS.skin, [side * 0.135, 0.87, 0]);
+        }
+
+        // Hair: a big swept red mass with a tuft at the front
+        part(new THREE.IcosahedronGeometry(0.17, 0), COLORS.hair, [0, 0.97, -0.03], [0.3, 0.2, 0], [1, 0.72, 1.12]);
+        part(new THREE.IcosahedronGeometry(0.13, 0), COLORS.hair, [0, 0.87, -0.1], [0, 0.5, 0], [1.08, 1, 0.8]);
+        part(new THREE.TetrahedronGeometry(0.12), COLORS.hair, [0.02, 1.06, 0.1], [-0.7, 0.4, 0.3]);
+        for (const side of [-1, 1]) {
+            part(new THREE.TetrahedronGeometry(0.08), COLORS.hair, [side * 0.12, 0.99, -0.02], [0.2, side, 0.3]);
+        }
+
+        // Keyboard ledge in front of him
+        part(new THREE.BoxGeometry(1.0, 0.05, 0.36), COLORS.consoleTop, [0, 0.28, 0.62]);
+        part(new THREE.BoxGeometry(0.52, 0.025, 0.16), COLORS.keyboard, [0, 0.315, 0.58]);
+
+        figure.position.copy(SEAT_POSITION);
+        figure.lookAt(new THREE.Vector3(LAB_BOX_CENTER.x, SEAT_POSITION.y, LAB_BOX_CENTER.z));
         this.group.add(figure);
     }
 
@@ -236,29 +309,53 @@ export class HoloLabScene {
         this.cursor = { row: cursorRow, col: cursorCol };
     }
 
-    // Dragging only nudges the camera a little, so the framing never breaks
-    public nudgeBy(dx: number, dy: number) {
-        this.nudge.x = THREE.MathUtils.clamp(this.nudge.x - dx * 0.002, -0.3, 0.3);
-        this.nudge.y = THREE.MathUtils.clamp(this.nudge.y + dy * 0.002, -0.2, 0.2);
+    // What the display shows once it has booted
+    public setContent(content: LabContent) {
+        this.content = content;
     }
 
-    // Ease back to the composed shot once the mouse is let go
-    public relax() {
-        this.nudge.x *= 0.92;
-        this.nudge.y *= 0.92;
+    public isBooting(): boolean {
+        return (performance.now() - this.bootStart) / 1000 < BOOT_END;
+    }
+
+    // Drag swings the camera around the display and it stays where it is left
+    public orbitBy(dx: number, dy: number) {
+        const goal = this.orbitGoal;
+        goal.yaw = THREE.MathUtils.clamp(goal.yaw - dx * 0.005, HOME_ORBIT.yaw - YAW_RANGE, HOME_ORBIT.yaw + YAW_RANGE);
+        goal.pitch = THREE.MathUtils.clamp(goal.pitch + dy * 0.004, HOME_ORBIT.pitch - PITCH_DOWN, HOME_ORBIT.pitch + PITCH_UP);
+    }
+
+    public zoomBy(deltaY: number) {
+        const goal = this.orbitGoal;
+        goal.radius = THREE.MathUtils.clamp(goal.radius * (1 + deltaY * 0.001), ZOOM_RANGE.min, ZOOM_RANGE.max);
+    }
+
+    // Back to the over-the-shoulder shot
+    public resetView() {
+        this.orbitGoal = { ...HOME_ORBIT };
     }
 
     public update(camera: THREE.PerspectiveCamera) {
         const now = performance.now();
         const t = now / 1000;
 
-        // A slow handheld drift around the composed shot
+        // Ease towards the goal, with a slow handheld drift on top
+        const view = this.orbitNow;
+        for (const key of ['yaw', 'pitch', 'radius'] as const) {
+            view[key] += (this.orbitGoal[key] - view[key]) * 0.15;
+        }
+        const swing = Math.min(Math.abs(view.yaw - HOME_ORBIT.yaw) / YAW_RANGE, 1);
+        const radius = view.radius + Math.max(SWING_RADIUS - view.radius, 0) * swing;
         camera.position.set(
-            CAMERA_POSITION.x + Math.sin(t * 0.31) * 0.05 + this.nudge.x,
-            CAMERA_POSITION.y + Math.sin(t * 0.23) * 0.035 + this.nudge.y,
-            CAMERA_POSITION.z + Math.sin(t * 0.17) * 0.04
+            ORBIT_PIVOT.x + radius * Math.cos(view.pitch) * Math.sin(view.yaw) + Math.sin(t * 0.31) * 0.03,
+            ORBIT_PIVOT.y + radius * Math.sin(view.pitch) + Math.sin(t * 0.23) * 0.02,
+            ORBIT_PIVOT.z + radius * Math.cos(view.pitch) * Math.cos(view.yaw) + Math.sin(t * 0.17) * 0.03
         );
-        camera.lookAt(CAMERA_TARGET);
+        camera.position.y = Math.max(camera.position.y, FLOOR_CLEARANCE);
+        camera.lookAt(ORBIT_PIVOT);
+
+        // The boot sequence always shows; after it the box holds the terminal or the graph
+        this.screen.visible = this.content === 'terminal' || this.isBooting();
 
         this.particle.position.set(Math.sin(t * 0.4) * 1.1, Math.sin(t * 0.53) * 0.6 - 0.2, Math.cos(t * 0.37) * 0.45);
         this.particle.rotation.set(t * 0.7, t * 0.5, t * 0.3);

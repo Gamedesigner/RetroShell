@@ -1,10 +1,13 @@
 import * as THREE from 'three';
 import { HoloTextRenderer } from './holoText';
 import { HoloFileGraph } from './holoGraph';
-import { HoloLabScene } from './holoLab';
+import { HoloLabScene, LAB_BOX_CENTER, LAB_GRAPH_FIT, LAB_PALETTE } from './holoLab';
 import { HoloPalette } from './themes';
 
-export type HoloMode = 'cube' | 'files' | 'lab';
+// The 3D view is a setting (the open space around the cube, or the lab) showing
+// some content (the terminal, or the file graph of the shell's folder)
+export type HoloSetting = 'space' | 'lab';
+export type HoloContent = 'terminal' | 'files';
 
 const CUBE_CAMERA_Z = 7;
 
@@ -24,16 +27,19 @@ export class HoloCubeScene {
     private autoRotate = true;
     private time = 0;
 
-    // File graph mode: the cube bursts open into a graph of the shell's folder
+    private setting: HoloSetting = 'space';
+    private content: HoloContent = 'terminal';
+    private themePalette: HoloPalette | null = null;
+
+    // File graph: in open space the cube bursts open into it
     private graph: HoloFileGraph;
-    private mode: HoloMode = 'cube';
     private burst = 0; // 0 = cube, 1 = file graph, animated between the two
     private graphRotation = { x: 0.2, y: 0 };
     private graphZoom = CUBE_CAMERA_Z;
     private dragDistance = 0;
     private raycaster = new THREE.Raycaster();
 
-    // LAB mode: the terminal on a scientist's display in an Another World style lab
+    // The lab: the content on a scientist's display in an Another World style lab
     private lab: HoloLabScene;
 
     // Called with the full path when a file node is clicked / double-clicked
@@ -115,14 +121,14 @@ export class HoloCubeScene {
         canvas.addEventListener('mousedown', (e) => {
             this.isDragging = true;
             this.dragDistance = 0;
-            if (this.mode === 'cube') this.autoRotate = false;
+            if (this.showingCube()) this.autoRotate = false;
             this.previousMousePosition = { x: e.clientX, y: e.clientY };
         });
 
         canvas.addEventListener('mousemove', (e) => {
             if (!this.isDragging) {
                 // Point at clickable nodes in the file graph
-                if (this.mode === 'files') {
+                if (this.content === 'files') {
                     canvas.style.cursor = this.graph.hover(this.aimRaycaster(e)) ? 'pointer' : '';
                 }
                 return;
@@ -132,16 +138,16 @@ export class HoloCubeScene {
             const deltaY = e.clientY - this.previousMousePosition.y;
             this.dragDistance += Math.abs(deltaX) + Math.abs(deltaY);
 
-            // In the lab a drag only nudges the camera
-            if (this.mode === 'lab') {
-                this.lab.nudgeBy(deltaX, deltaY);
+            // In the lab a drag swings the camera around the display
+            if (this.setting === 'lab') {
+                this.lab.orbitBy(deltaX, deltaY);
                 this.previousMousePosition = { x: e.clientX, y: e.clientY };
                 return;
             }
 
             // The drag turns whichever of the two is on show
-            const rotation = this.mode === 'files' ? this.graphRotation : this.cubeRotation;
-            const limit = this.mode === 'files' ? Math.PI / 2 : Math.PI / 3;
+            const rotation = this.content === 'files' ? this.graphRotation : this.cubeRotation;
+            const limit = this.content === 'files' ? Math.PI / 2 : Math.PI / 3;
             rotation.y += deltaX * 0.01;
             rotation.x += deltaY * 0.01;
 
@@ -153,7 +159,7 @@ export class HoloCubeScene {
 
         canvas.addEventListener('mouseup', (e) => {
             // A left press without a drag is a click on the file graph
-            if (e.button === 0 && this.isDragging && this.mode === 'files' && this.dragDistance < 5) {
+            if (e.button === 0 && this.isDragging && this.content === 'files' && this.dragDistance < 5) {
                 const filePath = this.graph.click(this.aimRaycaster(e));
                 this.cancelPendingPick();
                 if (filePath) {
@@ -170,33 +176,44 @@ export class HoloCubeScene {
             this.isDragging = false;
         });
 
-        // Double-click to reset rotation, or to open / navigate in the file graph
+        // Double-click a node to open or navigate in the file graph; anywhere else
+        // it puts the cube, or the lab's camera, back where it started
         canvas.addEventListener('dblclick', (e) => {
-            if (this.mode === 'files') {
+            const ray = this.aimRaycaster(e);
+            if (this.content === 'files' && this.graph.nodeAt(ray)) {
                 this.cancelPendingPick();
-                const filePath = this.graph.doubleClick(this.aimRaycaster(e));
+                const filePath = this.graph.doubleClick(ray);
                 if (filePath) this.onFileOpened?.(filePath);
-                return;
+            } else if (this.setting === 'lab') {
+                this.lab.resetView();
+            } else if (this.content === 'terminal') {
+                this.cubeRotation = { x: -0.15, y: 0.25 };
+                this.autoRotate = true;
             }
-            if (this.mode !== 'cube') return;
-            this.cubeRotation = { x: -0.15, y: 0.25 };
-            this.autoRotate = true;
         });
 
         // Right-click a folder in the file graph to put it at the centre
         canvas.addEventListener('contextmenu', (e) => {
             e.preventDefault();
-            if (this.mode === 'files' && this.dragDistance < 5) {
+            if (this.content === 'files' && this.dragDistance < 5) {
                 this.graph.centerOn(this.aimRaycaster(e));
             }
         });
 
-        // Scroll to zoom the file graph
+        // Scroll moves the lab's camera, or zooms the file graph in open space
         canvas.addEventListener('wheel', (e) => {
-            if (this.mode !== 'files') return;
-            e.preventDefault();
-            this.graphZoom = Math.max(2, Math.min(30, this.graphZoom * (1 + e.deltaY * 0.001)));
+            if (this.setting === 'lab') {
+                e.preventDefault();
+                this.lab.zoomBy(e.deltaY);
+            } else if (this.content === 'files') {
+                e.preventDefault();
+                this.graphZoom = Math.max(2, Math.min(30, this.graphZoom * (1 + e.deltaY * 0.001)));
+            }
         }, { passive: false });
+    }
+
+    private showingCube(): boolean {
+        return this.setting === 'space' && this.content === 'terminal';
     }
 
     private cancelPendingPick() {
@@ -216,16 +233,24 @@ export class HoloCubeScene {
         return this.raycaster;
     }
 
-    // Switch between the terminal cube, the file graph of the given folder and the
-    // lab. Entering the lab plays its boot sequence, greeting the user by name.
-    public setMode(mode: HoloMode, directory: string = '', userName: string = '') {
-        this.mode = mode;
+    // Choose the setting and what it shows. Files content shows the graph of the
+    // given folder; arriving in the lab plays its boot sequence, greeting the user.
+    public setView(setting: HoloSetting, content: HoloContent, directory: string = '', userName: string = '') {
+        const arrivingInLab = setting === 'lab' && this.setting !== 'lab';
+        this.setting = setting;
+        this.content = content;
         this.renderer.domElement.style.cursor = '';
-        if (mode === 'files') {
-            this.showFolder(directory);
-        } else if (mode === 'lab') {
-            this.lab.startBoot(userName);
-        }
+        this.lab.setContent(content);
+        if (content === 'files') this.showFolder(directory);
+        if (arrivingInLab) this.bootLab(userName);
+
+        // In the lab the graph takes the display's green
+        const palette = setting === 'lab' ? LAB_PALETTE : this.themePalette;
+        if (palette) this.graph.setPalette(palette);
+    }
+
+    public bootLab(userName: string) {
+        this.lab.startBoot(userName);
     }
 
     // What the lab's display shows: the terminal's lines and its cursor
@@ -251,9 +276,6 @@ export class HoloCubeScene {
         this.graph.goUp();
     }
 
-    public getMode(): HoloMode {
-        return this.mode;
-    }
 
     private onResize() {
         const width = this.container.clientWidth;
@@ -284,24 +306,36 @@ export class HoloCubeScene {
         this.animationId = requestAnimationFrame(this.animate);
         this.time += 0.016; // ~60fps
 
-        // The lab replaces the cube and the graph and runs its own camera
-        this.lab.group.visible = this.mode === 'lab';
-        if (this.mode === 'lab') {
+        // The lab runs its own camera; the file graph can float inside its display box
+        this.lab.group.visible = this.setting === 'lab';
+        if (this.setting === 'lab') {
             this.cube.visible = false;
-            this.graph.group.visible = false;
-            if (!this.isDragging) this.lab.relax();
             this.lab.update(this.camera);
+
+            const showGraph = this.content === 'files' && !this.lab.isBooting();
+            this.graph.group.visible = showGraph;
+            if (showGraph) {
+                // Scaled to stay inside the box as folders open and close
+                this.graph.group.position.copy(LAB_BOX_CENTER);
+                this.graph.group.rotation.set(0, 0, 0);
+                const fit = LAB_GRAPH_FIT / Math.max(this.graph.getExtent(), 0.5);
+                const scale = this.graph.group.scale.x + (fit - this.graph.group.scale.x) * 0.1;
+                this.graph.group.scale.setScalar(scale);
+                const canvas = this.renderer.domElement;
+                this.graph.update(this.camera, canvas.clientWidth, canvas.clientHeight, 1);
+            }
             this.renderer.render(this.scene, this.camera);
             return;
         }
-        // Back from the lab: put the camera on the cube's axis again
+        // Back from the lab: put the camera and the graph back in open space
         if (this.camera.position.x !== 0 || this.camera.position.y !== 0) {
             this.camera.position.set(0, 0, this.camera.position.z);
             this.camera.rotation.set(0, 0, 0);
         }
+        this.graph.group.position.set(0, 0, 0);
 
         // Auto-rotate when not dragging (the cube holds its angle while the file graph is up)
-        if (this.autoRotate && !this.isDragging && this.mode === 'cube') {
+        if (this.autoRotate && !this.isDragging && this.showingCube()) {
             this.cubeRotation.y += 0.002;
         }
 
@@ -313,7 +347,7 @@ export class HoloCubeScene {
         this.cube.position.y = Math.sin(this.time * 0.5) * 0.03;
 
         // Burst the cube open into the file graph, or fold it back
-        const target = this.mode === 'files' ? 1 : 0;
+        const target = this.content === 'files' ? 1 : 0;
         this.burst += (target - this.burst) * 0.12;
         if (Math.abs(target - this.burst) < 0.002) this.burst = target;
 
@@ -328,7 +362,7 @@ export class HoloCubeScene {
         this.graph.group.rotation.x += (this.graphRotation.x - this.graph.group.rotation.x) * 0.1;
         this.graph.group.rotation.y += (this.graphRotation.y - this.graph.group.rotation.y) * 0.1;
 
-        const cameraZ = this.mode === 'files' ? this.graphZoom : CUBE_CAMERA_Z;
+        const cameraZ = this.content === 'files' ? this.graphZoom : CUBE_CAMERA_Z;
         this.camera.position.z += (cameraZ - this.camera.position.z) * 0.12;
 
         // Update text animations
@@ -347,12 +381,14 @@ export class HoloCubeScene {
         this.textRenderer.updateText(lines, colors);
     }
 
-    // Recolor the wireframe and text to match the active theme
+    // Recolor the wireframe, text and graph to match the active theme (the lab
+    // keeps its own green)
     public setPalette(palette: HoloPalette) {
+        this.themePalette = palette;
         (this.wireframe.material as THREE.LineBasicMaterial).color.setHex(palette.normal);
         (this.innerWireframe.material as THREE.LineBasicMaterial).color.setHex(palette.normal);
         this.textRenderer.setPalette(palette);
-        this.graph.setPalette(palette);
+        if (this.setting === 'space') this.graph.setPalette(palette);
     }
 
     public dispose() {

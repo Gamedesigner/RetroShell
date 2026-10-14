@@ -18,7 +18,7 @@
     display: block;
 }
 
-/* Top bar of the 3D view: CUBE / FILES switch, then UP and the graph's folder */
+/* Top bar of the 3D view: setting and content switches, then UP and the graph's folder */
 #holo-topbar {
     position: absolute;
     top: 10px;
@@ -31,11 +31,12 @@
     pointer-events: none; /* only the controls themselves take clicks */
 }
 
-#holo-mode-switch,
+.holo-switch,
 #holo-path-bar {
     display: flex;
     align-items: center;
     pointer-events: auto;
+    background: rgba(0, 0, 0, 0.45); /* stays readable over a bright scene */
 }
 
 #holo-path-bar {
@@ -54,7 +55,7 @@
     white-space: nowrap;
 }
 
-#holo-mode-switch button,
+.holo-switch button,
 #holo-up-btn {
     background: transparent;
     border: 1px solid rgba(var(--holo-rgb), 0.5);
@@ -74,11 +75,11 @@
     cursor: default;
 }
 
-#holo-mode-switch button + button {
+.holo-switch button + button {
     border-left: none;
 }
 
-#holo-mode-switch button.active {
+.holo-switch button.active {
     background: rgba(var(--holo-rgb), 0.25);
 }
 

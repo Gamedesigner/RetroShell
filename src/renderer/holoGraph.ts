@@ -466,6 +466,18 @@ export class HoloFileGraph {
         this.group.add(this.hoverLabel);
     }
 
+    // Whether the pointer is over a node at all
+    public nodeAt(raycaster: THREE.Raycaster): boolean {
+        return this.pick(raycaster) !== null;
+    }
+
+    // How far the graph reaches from its root, for scaling it to fit a space
+    public getExtent(): number {
+        let furthest = 0;
+        for (const node of this.nodes) furthest = Math.max(furthest, node.position.length());
+        return furthest + 0.3;
+    }
+
     // Folders open and close in place. Returns the path when a file was clicked.
     public click(raycaster: THREE.Raycaster): string | null {
         const node = this.pick(raycaster);
@@ -531,7 +543,7 @@ export class HoloFileGraph {
     // the ones that would cover another label or another node's shape.
     // The hovered node's name goes first, then the root, folders, labels already
     // showing (so they do not flicker) and whatever is nearest the viewer.
-    private layoutLabels(camera: THREE.PerspectiveCamera, viewWidth: number, viewHeight: number) {
+    private layoutLabels(camera: THREE.PerspectiveCamera, viewWidth: number, viewHeight: number, labelScale: number) {
         // World size of one screen pixel at distance 1
         const unitsPerPixel = (2 * Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2)) / viewHeight;
         const groupScale = Math.max(this.group.scale.x, 0.001);
@@ -549,7 +561,7 @@ export class HoloFileGraph {
             const y = (1 - projected.y) / 2 * viewHeight;
             const radius = node.radius * groupScale / (world.distanceTo(camera.position) * unitsPerPixel);
 
-            const height = (sprite.userData.pixels as number) * groupScale;
+            const height = (sprite.userData.pixels as number) * labelScale;
             const width = height * (sprite.userData.aspect as number);
             sprite.scale.set(width / groupScale * unitsPerPixel, height / groupScale * unitsPerPixel, 1);
             // Anchor above the sprite so the text sits below the shape on screen
@@ -594,9 +606,11 @@ export class HoloFileGraph {
         }
     }
 
-    public update(camera: THREE.PerspectiveCamera, viewWidth: number, viewHeight: number) {
+    // Labels shrink with the graph while it bursts out of the cube; pass a fixed
+    // labelScale to keep them full size (as in the lab, where the graph is scaled to fit)
+    public update(camera: THREE.PerspectiveCamera, viewWidth: number, viewHeight: number, labelScale: number = this.group.scale.x) {
         this.poseShapes();
-        this.layoutLabels(camera, viewWidth, viewHeight);
+        this.layoutLabels(camera, viewWidth, viewHeight, Math.max(labelScale, 0.001));
         if (!this.awake || !this.root) return;
         const nodes = this.nodes;
         const delta = new THREE.Vector3();

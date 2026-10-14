@@ -13,7 +13,7 @@ A retro-styled PowerShell terminal for Windows, with CRT effects, keyboard sound
 - **CRT look** - scanlines, flicker and phosphor glow.
 - **Sound effects** - synthesized key clicks, spacebar, return and bell sounds. Can be switched off.
 - **3D mode** - the live terminal rendered as voxel text inside a rotating wireframe cube. You can keep typing while it is on.
-- **LAB mode** - in 3D mode, LAB puts your terminal on the scientist's translucent green display from the lab in *Another World* (*Out of This World* in the US), seen over his shoulder, after a short identification and boot sequence. Drawn in the game's flat-polygon style.
+- **The lab** - in 3D mode, LAB puts your terminal (or the file graph) on the scientist's translucent green display from the lab in *Another World* (*Out of This World* in the US), seen over his shoulder, after a short identification and boot sequence. Drawn in the game's flat-polygon style; drag to swing the camera around it.
 - **File graph** - in 3D mode, switch from CUBE to FILES and the cube bursts open into a floating graph of the shell's current folder. Folders open and close as you click them, files are drawn as a different wireframe shape per kind, and clicking a file puts its path on the command line.
 
 ## Controls
@@ -24,7 +24,9 @@ A retro-styled PowerShell terminal for Windows, with CRT effects, keyboard sound
 | Open settings (theme, sound) | `Ctrl+,` or the `*` button |
 | Rotate the cube | Drag with the mouse |
 | Reset the cube | Double-click it |
-| Enter the lab | `LAB` in the corner of the 3D view; keep typing, the terminal runs on the display |
+| Choose the setting | `CUBE` / `LAB` in the corner of the 3D view |
+| Choose what it shows | `TERMINAL` / `FILES` beside it; keep typing, the terminal stays live |
+| Look around the lab | Drag to swing the camera, scroll to move closer, double-click empty space to go back to the shot over the shoulder |
 | Resize the window | Drag any edge or corner |
 | Move the window | Drag the title bar |
 
@@ -32,7 +34,7 @@ A retro-styled PowerShell terminal for Windows, with CRT effects, keyboard sound
 
 | Action | How |
 | --- | --- |
-| Switch between cube and file graph | `CUBE` / `FILES` in the corner of the 3D view |
+| Show the file graph | `FILES` in the corner of the 3D view (works in the open and in the lab) |
 | Open or close a folder | Click it |
 | Make a folder the centre of the graph | Right-click or double-click it |
 | Go up a folder | `UP`, or double-click the ringed root at the centre |

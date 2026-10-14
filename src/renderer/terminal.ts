@@ -4,7 +4,7 @@ import { WebLinksAddon } from '@xterm/addon-web-links';
 import { themes, defaultTheme, ThemeName, RetroTheme } from './themes';
 import { soundManager } from './sounds';
 import { ElectronAPI } from '../shared/types';
-import { HoloCubeScene, HoloMode } from './holoCube';
+import { HoloCubeScene, HoloSetting, HoloContent } from './holoCube';
 import { initFilePanel } from './filePanel';
 import { LAB_COLS, LAB_ROWS } from './labSize';
 import './windowResize';
@@ -43,7 +43,8 @@ function applyThemeToCss(theme: RetroTheme) {
 const terminalContainer = document.getElementById('terminal-container');
 const holoCubeContainer = document.getElementById('holo-cube-container');
 const cubeBtn = document.getElementById('cube-btn');
-const holoModeSwitch = document.getElementById('holo-mode-switch');
+const holoSettingSwitch = document.getElementById('holo-setting-switch');
+const holoContentSwitch = document.getElementById('holo-content-switch');
 const holoPromptLine = document.getElementById('holo-prompt-line');
 const holoPathBar = document.getElementById('holo-path-bar');
 const holoPath = document.getElementById('holo-path');
@@ -244,14 +245,16 @@ if (terminalContainer) {
         holoUpBtn.blur(); // keep keystrokes going to the terminal
     });
 
-    // Which view the 3D mode shows: the cube, the file graph or the lab
-    let holoMode: HoloMode = 'cube';
+    // What the 3D mode shows: a setting (open space or the lab) and its content
+    // (the terminal or the file graph)
+    let holoSetting: HoloSetting = 'space';
+    let holoContent: HoloContent = 'terminal';
 
-    // While the lab is on, the terminal runs at the size of the lab's display;
+    // While in the lab, the terminal runs at the size of the lab's display;
     // otherwise it fills the window
     let sizeBeforeLab: { cols: number; rows: number } | null = null;
     function fitTerminal() {
-        if (cubeModeActive && holoMode === 'lab') {
+        if (cubeModeActive && holoSetting === 'lab') {
             if (!sizeBeforeLab) sizeBeforeLab = { cols: term.cols, rows: term.rows };
             term.resize(LAB_COLS, LAB_ROWS);
         } else if (cubeModeActive && sizeBeforeLab) {
@@ -280,29 +283,41 @@ if (terminalContainer) {
         holoFade.style.opacity = '0';
     }
 
-    // Switch the 3D view between the terminal cube, the file graph and the lab
-    function setHoloMode(mode: HoloMode) {
+    // Switch the 3D view's setting and content. Going in or out of the lab cuts
+    // through black and resizes the terminal for the lab's display.
+    function setHoloView(setting: HoloSetting, content: HoloContent) {
         if (!holoCubeScene) return;
-        const labChanged = (mode === 'lab') !== (holoMode === 'lab');
-        holoMode = mode;
-        if (mode === 'lab' || labChanged) {
+        const settingChanged = setting !== holoSetting;
+        holoSetting = setting;
+        holoContent = content;
+        if (settingChanged) {
             fadeThroughBlack();
             fitTerminal();
         }
-        holoCubeScene.setMode(mode, mode === 'files' ? shellDirectoryIfMoved() : '', userName);
-        holoModeSwitch?.querySelectorAll('button').forEach((button) => {
-            button.classList.toggle('active', button.dataset.mode === mode);
+        holoCubeScene.setView(setting, content, content === 'files' ? shellDirectoryIfMoved() : '', userName);
+
+        holoSettingSwitch?.querySelectorAll('button').forEach((button) => {
+            button.classList.toggle('active', button.dataset.setting === setting);
         });
-        holoPromptLine?.classList.toggle('hidden', mode !== 'files');
-        holoPathBar?.classList.toggle('hidden', mode !== 'files');
-        if (mode !== 'files') filePanel.close();
+        holoContentSwitch?.querySelectorAll('button').forEach((button) => {
+            button.classList.toggle('active', button.dataset.content === content);
+        });
+        holoPromptLine?.classList.toggle('hidden', content !== 'files');
+        holoPathBar?.classList.toggle('hidden', content !== 'files');
+        if (content !== 'files') filePanel.close();
         syncTerminalToHolo();
     }
 
-    holoModeSwitch?.querySelectorAll('button').forEach((button) => {
+    holoSettingSwitch?.querySelectorAll('button').forEach((button) => {
         button.addEventListener('click', () => {
-            setHoloMode(button.dataset.mode as HoloMode);
+            setHoloView(button.dataset.setting as HoloSetting, holoContent);
             button.blur(); // keep keystrokes going to the terminal
+        });
+    });
+    holoContentSwitch?.querySelectorAll('button').forEach((button) => {
+        button.addEventListener('click', () => {
+            setHoloView(holoSetting, button.dataset.content as HoloContent);
+            button.blur();
         });
     });
 
@@ -331,7 +346,11 @@ if (terminalContainer) {
                 holoCubeScene.setPalette(currentTheme.holo);
                 holoCubeScene.start();
                 // Coming back to the lab boots it again and shrinks the terminal to fit it
-                if (holoMode === 'lab') setHoloMode('lab');
+                if (holoSetting === 'lab') {
+                    fadeThroughBlack();
+                    fitTerminal();
+                    holoCubeScene.bootLab(userName);
+                }
             }
 
             // Start syncing terminal buffer to 3D text
@@ -366,7 +385,7 @@ if (terminalContainer) {
     function syncTerminalToHolo() {
         if (!holoCubeScene || !cubeModeActive) return;
 
-        if (holoCubeScene.getMode() === 'lab') {
+        if (holoSetting === 'lab' && holoContent === 'terminal') {
             const buffer = term.buffer.active;
             const lines: string[] = [];
             for (let row = 0; row < term.rows; row++) {
@@ -376,7 +395,7 @@ if (terminalContainer) {
             return;
         }
 
-        if (holoCubeScene.getMode() === 'files') {
+        if (holoContent === 'files') {
             // The cube is out of sight: show the input line and follow the shell's folder
             if (holoPromptLine) holoPromptLine.textContent = getCursorLine();
             const moved = shellDirectoryIfMoved();

@@ -24,10 +24,13 @@
         <div id="terminal-container"></div>
         <div id="holo-cube-container" class="hidden">
             <div id="holo-topbar">
-                <div id="holo-mode-switch">
-                    <button data-mode="cube" class="active" title="Terminal in the cube">CUBE</button>
-                    <button data-mode="files" title="File graph of the current folder">FILES</button>
-                    <button data-mode="lab" title="The lab from Out of This World">LAB</button>
+                <div id="holo-setting-switch" class="holo-switch">
+                    <button data-setting="space" class="active" title="Open space, around the cube">CUBE</button>
+                    <button data-setting="lab" title="The lab from Out of This World">LAB</button>
+                </div>
+                <div id="holo-content-switch" class="holo-switch">
+                    <button data-content="terminal" class="active" title="Show the terminal">TERMINAL</button>
+                    <button data-content="files" title="Show the file graph of the current folder">FILES</button>
                 </div>
                 <div id="holo-path-bar" class="hidden">
                     <button id="holo-up-btn" title="Go up one folder (same as double-clicking the root)">UP</button>
