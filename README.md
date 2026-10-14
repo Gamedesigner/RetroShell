@@ -13,6 +13,7 @@ A retro-styled PowerShell terminal for Windows, with CRT effects, keyboard sound
 - **CRT look** - scanlines, flicker and phosphor glow.
 - **Sound effects** - synthesized key clicks, spacebar, return and bell sounds. Can be switched off.
 - **3D mode** - the live terminal rendered as voxel text inside a rotating wireframe cube. You can keep typing while it is on.
+- **LAB mode** - in 3D mode, LAB puts your terminal on the scientist's translucent green display from the lab in *Another World* (*Out of This World* in the US), seen over his shoulder, after a short identification and boot sequence. Drawn in the game's flat-polygon style.
 - **File graph** - in 3D mode, switch from CUBE to FILES and the cube bursts open into a floating graph of the shell's current folder. Folders open and close as you click them, files are drawn as a different wireframe shape per kind, and clicking a file puts its path on the command line.
 
 ## Controls
@@ -23,6 +24,7 @@ A retro-styled PowerShell terminal for Windows, with CRT effects, keyboard sound
 | Open settings (theme, sound) | `Ctrl+,` or the `*` button |
 | Rotate the cube | Drag with the mouse |
 | Reset the cube | Double-click it |
+| Enter the lab | `LAB` in the corner of the 3D view; keep typing, the terminal runs on the display |
 | Resize the window | Drag any edge or corner |
 | Move the window | Drag the title bar |
 

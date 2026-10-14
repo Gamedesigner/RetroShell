@@ -6,6 +6,7 @@ import { soundManager } from './sounds';
 import { ElectronAPI } from '../shared/types';
 import { HoloCubeScene, HoloMode } from './holoCube';
 import { initFilePanel } from './filePanel';
+import { LAB_COLS, LAB_ROWS } from './labSize';
 import './windowResize';
 
 declare const window: Window & { electronAPI: ElectronAPI };
@@ -47,6 +48,7 @@ const holoPromptLine = document.getElementById('holo-prompt-line');
 const holoPathBar = document.getElementById('holo-path-bar');
 const holoPath = document.getElementById('holo-path');
 const holoUpBtn = document.getElementById('holo-up-btn') as HTMLButtonElement | null;
+const holoFade = document.getElementById('holo-fade');
 
 // Cube mode state
 let cubeModeActive = false;
@@ -242,10 +244,52 @@ if (terminalContainer) {
         holoUpBtn.blur(); // keep keystrokes going to the terminal
     });
 
-    // Switch the 3D view between the terminal cube and the file graph
+    // Which view the 3D mode shows: the cube, the file graph or the lab
+    let holoMode: HoloMode = 'cube';
+
+    // While the lab is on, the terminal runs at the size of the lab's display;
+    // otherwise it fills the window
+    let sizeBeforeLab: { cols: number; rows: number } | null = null;
+    function fitTerminal() {
+        if (cubeModeActive && holoMode === 'lab') {
+            if (!sizeBeforeLab) sizeBeforeLab = { cols: term.cols, rows: term.rows };
+            term.resize(LAB_COLS, LAB_ROWS);
+        } else if (cubeModeActive && sizeBeforeLab) {
+            // Hidden behind the 3D view the terminal cannot measure itself, so it
+            // goes back to the size it had before the lab
+            term.resize(sizeBeforeLab.cols, sizeBeforeLab.rows);
+            sizeBeforeLab = null;
+        } else {
+            sizeBeforeLab = null;
+            fitAddon.fit();
+        }
+        window.electronAPI.resizePty(term.cols, term.rows);
+    }
+
+    // The lab's boot sequence greets the user by name
+    let userName = '';
+    window.electronAPI.getUserName().then((name) => { userName = name; });
+
+    // Cut through black, the way the game cuts between shots
+    function fadeThroughBlack() {
+        if (!holoFade) return;
+        holoFade.style.transition = 'none';
+        holoFade.style.opacity = '1';
+        void holoFade.offsetWidth; // start the fade from fully black
+        holoFade.style.transition = '';
+        holoFade.style.opacity = '0';
+    }
+
+    // Switch the 3D view between the terminal cube, the file graph and the lab
     function setHoloMode(mode: HoloMode) {
         if (!holoCubeScene) return;
-        holoCubeScene.setMode(mode, mode === 'files' ? shellDirectoryIfMoved() : '');
+        const labChanged = (mode === 'lab') !== (holoMode === 'lab');
+        holoMode = mode;
+        if (mode === 'lab' || labChanged) {
+            fadeThroughBlack();
+            fitTerminal();
+        }
+        holoCubeScene.setMode(mode, mode === 'files' ? shellDirectoryIfMoved() : '', userName);
         holoModeSwitch?.querySelectorAll('button').forEach((button) => {
             button.classList.toggle('active', button.dataset.mode === mode);
         });
@@ -286,6 +330,8 @@ if (terminalContainer) {
             if (holoCubeScene) {
                 holoCubeScene.setPalette(currentTheme.holo);
                 holoCubeScene.start();
+                // Coming back to the lab boots it again and shrinks the terminal to fit it
+                if (holoMode === 'lab') setHoloMode('lab');
             }
 
             // Start syncing terminal buffer to 3D text
@@ -310,8 +356,7 @@ if (terminalContainer) {
 
             // Refocus and resize terminal (the window may have been resized while in 3D)
             term.focus();
-            fitAddon.fit();
-            window.electronAPI.resizePty(term.cols, term.rows);
+            fitTerminal();
 
             localStorage.setItem(STORAGE_KEY_CUBE_MODE, 'false');
         }
@@ -320,6 +365,16 @@ if (terminalContainer) {
     // Sync terminal content to holographic display
     function syncTerminalToHolo() {
         if (!holoCubeScene || !cubeModeActive) return;
+
+        if (holoCubeScene.getMode() === 'lab') {
+            const buffer = term.buffer.active;
+            const lines: string[] = [];
+            for (let row = 0; row < term.rows; row++) {
+                lines.push(buffer.getLine(buffer.viewportY + row)?.translateToString(true) ?? '');
+            }
+            holoCubeScene.updateLab(lines, buffer.baseY + buffer.cursorY - buffer.viewportY, buffer.cursorX);
+            return;
+        }
 
         if (holoCubeScene.getMode() === 'files') {
             // The cube is out of sight: show the input line and follow the shell's folder
@@ -427,8 +482,7 @@ if (terminalContainer) {
     });
 
     window.addEventListener('resize', () => {
-        fitAddon.fit();
-        window.electronAPI.resizePty(term.cols, term.rows);
+        fitTerminal();
     });
 
     // Initial resize

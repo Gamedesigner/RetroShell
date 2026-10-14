@@ -18,4 +18,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
   listDirectory: (dirPath: string, countFirst?: number) => ipcRenderer.invoke('fs-list-dir', dirPath, countFirst),
   getFileInfo: (filePath: string) => ipcRenderer.invoke('fs-file-info', filePath),
   showInExplorer: (filePath: string) => ipcRenderer.send('fs-show-in-explorer', filePath),
+  // For the LAB mode's greeting
+  getUserName: () => ipcRenderer.invoke('get-user-name'),
 });

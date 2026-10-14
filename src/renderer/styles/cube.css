@@ -102,6 +102,17 @@
     display: none;
 }
 
+/* Black cut between the lab and the other views */
+#holo-fade {
+    position: absolute;
+    inset: 0;
+    z-index: 3;
+    background: #000;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.5s ease-out;
+}
+
 /* File info panel, docked on the right of the 3D view; slides in when opened */
 #holo-file-panel {
     position: absolute;

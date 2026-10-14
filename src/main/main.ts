@@ -1,4 +1,5 @@
 import { app, BrowserWindow, ipcMain, screen, shell, Rectangle, Point } from 'electron';
+import * as os from 'os';
 import * as path from 'path';
 import { createPty } from './pty';
 import { listDirectory, fileInfo } from './files';
@@ -107,6 +108,8 @@ app.on('ready', () => {
   ipcMain.handle('fs-list-dir', (event, dirPath: string, countFirst?: number) => listDirectory(dirPath, countFirst));
 
   ipcMain.handle('fs-file-info', (event, filePath: string) => fileInfo(filePath));
+
+  ipcMain.handle('get-user-name', () => os.userInfo().username);
 
   // Opens the containing folder in Explorer with the file selected
   ipcMain.on('fs-show-in-explorer', (event, filePath: string) => {

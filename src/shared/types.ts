@@ -30,6 +30,7 @@ export interface ElectronAPI {
   listDirectory: (dirPath: string, countFirst?: number) => Promise<DirectoryListing>;
   getFileInfo: (filePath: string) => Promise<FileInfo | null>;
   showInExplorer: (filePath: string) => void;
+  getUserName: () => Promise<string>;
 }
 
 declare global {

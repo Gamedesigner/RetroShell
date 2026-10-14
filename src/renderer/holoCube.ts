@@ -1,9 +1,10 @@
 import * as THREE from 'three';
 import { HoloTextRenderer } from './holoText';
 import { HoloFileGraph } from './holoGraph';
+import { HoloLabScene } from './holoLab';
 import { HoloPalette } from './themes';
 
-export type HoloMode = 'cube' | 'files';
+export type HoloMode = 'cube' | 'files' | 'lab';
 
 const CUBE_CAMERA_Z = 7;
 
@@ -31,6 +32,9 @@ export class HoloCubeScene {
     private graphZoom = CUBE_CAMERA_Z;
     private dragDistance = 0;
     private raycaster = new THREE.Raycaster();
+
+    // LAB mode: the terminal on a scientist's display in an Another World style lab
+    private lab: HoloLabScene;
 
     // Called with the full path when a file node is clicked / double-clicked
     public onFilePicked: ((filePath: string) => void) | null = null;
@@ -74,8 +78,9 @@ export class HoloCubeScene {
         // Initialize text renderer
         this.textRenderer = new HoloTextRenderer(this.cube);
 
-        // File graph, hidden until the mode is switched
+        // File graph and lab, hidden until the mode is switched
         this.graph = new HoloFileGraph(this.scene);
+        this.lab = new HoloLabScene(this.scene);
 
         // Set initial rotation
         this.cube.rotation.x = this.cubeRotation.x;
@@ -127,6 +132,13 @@ export class HoloCubeScene {
             const deltaY = e.clientY - this.previousMousePosition.y;
             this.dragDistance += Math.abs(deltaX) + Math.abs(deltaY);
 
+            // In the lab a drag only nudges the camera
+            if (this.mode === 'lab') {
+                this.lab.nudgeBy(deltaX, deltaY);
+                this.previousMousePosition = { x: e.clientX, y: e.clientY };
+                return;
+            }
+
             // The drag turns whichever of the two is on show
             const rotation = this.mode === 'files' ? this.graphRotation : this.cubeRotation;
             const limit = this.mode === 'files' ? Math.PI / 2 : Math.PI / 3;
@@ -166,6 +178,7 @@ export class HoloCubeScene {
                 if (filePath) this.onFileOpened?.(filePath);
                 return;
             }
+            if (this.mode !== 'cube') return;
             this.cubeRotation = { x: -0.15, y: 0.25 };
             this.autoRotate = true;
         });
@@ -203,13 +216,21 @@ export class HoloCubeScene {
         return this.raycaster;
     }
 
-    // Switch between the terminal cube and the file graph of the given folder
-    public setMode(mode: HoloMode, directory: string = '') {
+    // Switch between the terminal cube, the file graph of the given folder and the
+    // lab. Entering the lab plays its boot sequence, greeting the user by name.
+    public setMode(mode: HoloMode, directory: string = '', userName: string = '') {
         this.mode = mode;
         this.renderer.domElement.style.cursor = '';
         if (mode === 'files') {
             this.showFolder(directory);
+        } else if (mode === 'lab') {
+            this.lab.startBoot(userName);
         }
+    }
+
+    // What the lab's display shows: the terminal's lines and its cursor
+    public updateLab(lines: string[], cursorRow: number, cursorCol: number) {
+        this.lab.setText(lines, cursorRow, cursorCol);
     }
 
     // Point the file graph at a folder; does nothing when it is already showing it
@@ -262,6 +283,22 @@ export class HoloCubeScene {
     private animate = () => {
         this.animationId = requestAnimationFrame(this.animate);
         this.time += 0.016; // ~60fps
+
+        // The lab replaces the cube and the graph and runs its own camera
+        this.lab.group.visible = this.mode === 'lab';
+        if (this.mode === 'lab') {
+            this.cube.visible = false;
+            this.graph.group.visible = false;
+            if (!this.isDragging) this.lab.relax();
+            this.lab.update(this.camera);
+            this.renderer.render(this.scene, this.camera);
+            return;
+        }
+        // Back from the lab: put the camera on the cube's axis again
+        if (this.camera.position.x !== 0 || this.camera.position.y !== 0) {
+            this.camera.position.set(0, 0, this.camera.position.z);
+            this.camera.rotation.set(0, 0, 0);
+        }
 
         // Auto-rotate when not dragging (the cube holds its angle while the file graph is up)
         if (this.autoRotate && !this.isDragging && this.mode === 'cube') {
@@ -323,6 +360,7 @@ export class HoloCubeScene {
         window.removeEventListener('resize', this.onResize.bind(this));
         this.textRenderer.dispose();
         this.graph.dispose();
+        this.lab.dispose();
         this.renderer.dispose();
         if (this.renderer.domElement.parentNode) {
             this.renderer.domElement.parentNode.removeChild(this.renderer.domElement);
