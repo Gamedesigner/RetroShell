@@ -6,6 +6,8 @@ A retro-styled PowerShell terminal for Windows, with CRT effects, keyboard sound
 
 ![RetroShell in 3D mode](screenshots/3d-mode.png)
 
+![The scientist browsing files on his display in the lab](screenshots/lab-files.png)
+
 ## Features
 
 - **A real terminal** - a full PowerShell session running through xterm.js and node-pty.
