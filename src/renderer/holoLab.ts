@@ -90,6 +90,62 @@ const FLOOR_CLEARANCE = -1.25;
 const BOOT_ID_END = 1.7;
 const BOOT_END = 3.1;
 
+// The car lift in the floor under the window. Its platform brings the car up
+// from the pit while the lab boots.
+const FLOOR_Y = -1.45;
+const PIT = { minX: 4.4, maxX: 7.2, minZ: -5.6, maxZ: -0.4, depth: 2.3 };
+const LIFT_DOWN = -3.6;
+const LIFT_UP = FLOOR_Y;
+const LIFT_DELAY = 600;
+const LIFT_TIME = 4000;
+
+// The accelerator program, in seconds after it opens: the particle is
+// injected, sped round the ring, then fired at the lab
+const INJECT_END = 1.8;
+const ACCEL_END = 8.0;
+const EJECT_END = 8.8;
+const SURGE_END = 11.0;
+// The ring turns it eight times less a third, ending where the exit line leaves
+const ACCEL_SWEEP = Math.PI * 2 * 8 - (Math.PI * 2) / 3;
+const ACCEL_START_SPEED = 2;
+
+// Where the mouse sits on the desk, in the scientist's own frame
+const MOUSE_SPOT = new THREE.Vector3(-0.36, 0.322, 0.6);
+
+// The game's screen on the front of the display, lowered to leave the close
+// cube a strip along the top
+const GAME_SCREEN = { width: 2.7, y: -0.2 };
+
+// One of his forearms and hands, posed from the elbow towards a target
+interface Arm {
+    forearm: THREE.Mesh;
+    hand: THREE.Mesh;
+    elbow: THREE.Vector3;
+    home: THREE.Vector3;
+    key: THREE.Vector3;
+    pressedAt: number;
+}
+
+// What the display shows: the boot sequence, the two program cubes, the
+// accelerator experiment, or the terminal / file graph
+export type LabScreen = 'boot' | 'home' | 'accelerator' | 'program' | 'game';
+
+// A clickable cube floating in the display
+interface LabButton {
+    opens: LabScreen;
+    showOn: LabScreen[];
+    group: THREE.Group;
+    pick: THREE.Mesh;
+    edges: THREE.LineBasicMaterial;
+    fill: THREE.MeshBasicMaterial;
+    cross: THREE.MeshBasicMaterial | null;
+    // Drawn when first shown, once the display font has loaded
+    label: { sprite: THREE.Sprite; ctx: CanvasRenderingContext2D; texture: THREE.CanvasTexture; text: string; drawn: string } | null;
+    spin: boolean;
+    appear: number;
+    hover: number;
+}
+
 const CANVAS_WIDTH = 1024;
 const CANVAS_HEIGHT = 704;
 const MARGIN = 26;
@@ -162,6 +218,32 @@ export class HoloLabScene {
     // Wall monitors scrolling status lines
     private monitors: { ctx: CanvasRenderingContext2D; texture: THREE.CanvasTexture; lines: string[]; next: number }[] = [];
 
+    // The scientist's hands follow your typing and your mouse
+    private figure!: THREE.Group;
+    private leftArm!: Arm;
+    private rightArm!: Arm;
+    private mouse!: THREE.Mesh;
+    private mouseGoal = 0;
+    private mouseInUse = 0;
+    private mouseSlide = new THREE.Vector2();
+
+    // The car lift, and the warning lights that flash while it moves
+    private lift!: THREE.Group;
+    private beacons: THREE.MeshBasicMaterial[] = [];
+
+    // The display's program cubes and the experiment
+    private box!: THREE.Group;
+    private gameScreen!: THREE.Mesh;
+    private gameTexture!: THREE.CanvasTexture;
+    private labScreen: LabScreen = 'home';
+    private buttons: LabButton[] = [];
+    private hovered: LabButton | null = null;
+    private experimentStart = 0;
+    private struck = false;
+    private flashStrength = 0.55;
+    private shakeUntil = 0;
+    public onScreenChange: (() => void) | null = null;
+
     constructor(parent: THREE.Object3D) {
         this.canvas.width = CANVAS_WIDTH;
         this.canvas.height = CANVAS_HEIGHT;
@@ -175,7 +257,10 @@ export class HoloLabScene {
         this.buildMonitors();
         this.buildConsole();
         this.particle = this.buildBox();
+        this.buildLauncher();
         this.buildScientist();
+        this.buildLift();
+        this.buildSodaMachine();
 
         // The scientist and the machinery are lit: cool room light from behind
         // him, the display's green glow on his face, and the lightning through
@@ -207,11 +292,20 @@ export class HoloLabScene {
         // Walls all round, sized so swinging the camera shows them rather than empty space
         const roomMaterial = new THREE.MeshBasicMaterial({ color: COLORS.wall, side: THREE.BackSide });
         this.flashMaterials.push({ material: roomMaterial, base: roomMaterial.color.clone() });
-        const room = new THREE.Mesh(new THREE.BoxGeometry(16, 8.6, 22), roomMaterial);
-        room.position.set(0, 2.7, 2.95);
+        // (It reaches down below the floor, so the car lift's pit has room to show)
+        const room = new THREE.Mesh(new THREE.BoxGeometry(16, 11, 22), roomMaterial);
+        room.position.set(0, 1.5, 2.95);
         this.group.add(room);
 
-        const floor = new THREE.Mesh(new THREE.PlaneGeometry(16, 22), this.roomFlat(COLORS.floor));
+        // The floor, with a hole for the car lift's pit
+        const floorShape = new THREE.Shape([
+            new THREE.Vector2(-8, -11), new THREE.Vector2(8, -11), new THREE.Vector2(8, 11), new THREE.Vector2(-8, 11),
+        ]);
+        floorShape.holes.push(new THREE.Path([
+            new THREE.Vector2(PIT.minX, 2.95 - PIT.maxZ), new THREE.Vector2(PIT.maxX, 2.95 - PIT.maxZ),
+            new THREE.Vector2(PIT.maxX, 2.95 - PIT.minZ), new THREE.Vector2(PIT.minX, 2.95 - PIT.minZ),
+        ]));
+        const floor = new THREE.Mesh(new THREE.ShapeGeometry(floorShape), this.roomFlat(COLORS.floor));
         floor.rotation.x = -Math.PI / 2;
         floor.position.set(0, -1.45, 2.95);
         this.group.add(floor);
@@ -418,6 +512,7 @@ export class HoloLabScene {
 
         if (now >= this.nextFlash) {
             this.flashStart = now;
+            this.flashStrength = 0.55;
             this.nextFlash = now + 7000 + Math.random() * 9000;
             this.makeBolt();
         }
@@ -426,10 +521,10 @@ export class HoloLabScene {
 
         this.skyMaterial.color.set(COLORS.sky).lerp(FLASH_SKY, flash * 0.85);
         for (const { material, base } of this.flashMaterials) {
-            material.color.copy(base).lerp(FLASH_COLOR, flash * 0.55);
+            material.color.copy(base).lerp(FLASH_COLOR, flash * this.flashStrength);
         }
         (this.bolt.material as THREE.MeshBasicMaterial).opacity = flash > 0.3 ? flash : 0;
-        this.lightning.intensity = flash * 7;
+        this.lightning.intensity = flash * 7 * (this.flashStrength / 0.55);
         this.ambient.intensity = 1.6 + flash * 1.5;
     }
 
@@ -487,8 +582,356 @@ export class HoloLabScene {
         );
         box.add(particle);
 
+        // The game's screen, in its own colours on the front of the box, under
+        // the strip where the close cube sits
+        this.gameTexture = new THREE.CanvasTexture(document.createElement('canvas'));
+        this.gameTexture.colorSpace = THREE.SRGBColorSpace;
+        this.gameScreen = new THREE.Mesh(
+            new THREE.PlaneGeometry(GAME_SCREEN.width, (GAME_SCREEN.width * 200) / 320),
+            new THREE.MeshBasicMaterial({ map: this.gameTexture })
+        );
+        this.gameScreen.position.set(0, GAME_SCREEN.y, BOX_SIZE.z / 2 + 0.005);
+        this.gameScreen.visible = false;
+        box.add(this.gameScreen);
+
         this.group.add(box);
+        this.box = box;
         return particle;
+    }
+
+    // The program cubes floating in the display, as in the game: the
+    // accelerator, the file browser (terminal or graph) and the game. While one
+    // is open, a small cube with an X in the top right corner closes it.
+    private buildLauncher() {
+        const make = (size: number, position: [number, number, number], opens: LabScreen, showOn: LabScreen[], text: string | null): LabButton => {
+            const group = new THREE.Group();
+            group.position.set(...position);
+            const geometry = new THREE.BoxGeometry(size, size, size);
+            const edges = new THREE.LineBasicMaterial({ color: COLORS.boxEdge, transparent: true, opacity: 0 });
+            group.add(new THREE.LineSegments(new THREE.EdgesGeometry(geometry), edges));
+            const fill = new THREE.MeshBasicMaterial({ color: COLORS.boxEdge, transparent: true, opacity: 0, depthWrite: false, side: THREE.DoubleSide });
+            const pick = new THREE.Mesh(geometry, fill);
+            group.add(pick);
+            this.box.add(group);
+
+            // The label sits over the cube without turning with it
+            let label: LabButton['label'] = null;
+            if (text !== null) {
+                const canvas = document.createElement('canvas');
+                canvas.width = 512;
+                canvas.height = 64;
+                const texture = new THREE.CanvasTexture(canvas);
+                texture.colorSpace = THREE.SRGBColorSpace;
+                const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: texture, transparent: true, opacity: 0, depthWrite: false }));
+                sprite.scale.set(1.2, 0.15, 1);
+                sprite.position.set(position[0], position[1] + size * 0.95, position[2]);
+                sprite.renderOrder = 2;
+                this.box.add(sprite);
+                label = { sprite, ctx: canvas.getContext('2d')!, texture, text, drawn: '' };
+            }
+            const button: LabButton = { opens, showOn, group, pick, edges, fill, cross: null, label, spin: text !== null, appear: 0, hover: 0 };
+            this.buttons.push(button);
+            return button;
+        };
+
+        // Set right of centre and high, clear of his head in the shot over his shoulder
+        make(0.44, [-0.75, 0.2, 0.15], 'accelerator', ['home'], 'ACCELERATOR');
+        make(0.44, [0.15, 0.2, 0.15], 'program', ['home'], 'TERMINAL');
+        make(0.44, [1.05, 0.2, 0.15], 'game', ['home'], 'OUT OF THIS WORLD');
+
+        const close = make(0.2, [BOX_SIZE.x / 2 - 0.2, BOX_SIZE.y / 2 - 0.19, BOX_SIZE.z / 2 - 0.11], 'home', ['accelerator', 'program', 'game'], null);
+        close.cross = new THREE.MeshBasicMaterial({ color: COLORS.boxEdge, transparent: true, opacity: 0, side: THREE.DoubleSide });
+        for (const angle of [Math.PI / 4, -Math.PI / 4]) {
+            const bar = new THREE.Mesh(new THREE.PlaneGeometry(0.2, 0.024), close.cross);
+            bar.position.z = 0.101;
+            bar.rotation.z = angle;
+            close.group.add(bar);
+        }
+        close.group.rotation.set(0.2, -0.35, 0);
+    }
+
+    private updateLauncher(t: number) {
+        const program = this.buttons[1].label!;
+        program.text = this.content === 'files' ? 'FILES' : 'TERMINAL';
+
+        this.buttons.forEach((button, i) => {
+            const shown = button.showOn.includes(this.labScreen);
+            button.appear += ((shown ? 1 : 0) - button.appear) * 0.18;
+            if (!shown && button.appear < 0.01) button.appear = 0;
+            button.hover += ((shown && this.hovered === button ? 1 : 0) - button.hover) * 0.2;
+
+            button.group.visible = button.appear > 0;
+            button.group.scale.setScalar(Math.max(button.appear, 0.001) * (1 + button.hover * 0.15));
+            if (button.spin) button.group.rotation.set(0.45 + Math.sin(t * 0.6 + i) * 0.1, t * 0.35 + i * 0.8, 0);
+            button.edges.opacity = (0.55 + 0.45 * button.hover) * button.appear;
+            button.fill.opacity = (0.05 + 0.15 * button.hover) * button.appear;
+            if (button.cross) button.cross.opacity = button.edges.opacity;
+
+            const label = button.label;
+            if (label) {
+                (label.sprite.material as THREE.SpriteMaterial).opacity = button.hover * button.appear;
+                label.sprite.visible = button.hover > 0.01;
+                if (label.sprite.visible && label.drawn !== label.text) {
+                    label.drawn = label.text;
+                    const ctx = label.ctx;
+                    ctx.clearRect(0, 0, 512, 64);
+                    ctx.font = `38px ${TEXT_FONT}`;
+                    ctx.letterSpacing = '4px';
+                    ctx.textAlign = 'center';
+                    ctx.textBaseline = 'middle';
+                    ctx.fillStyle = '#d2ffc8';
+                    ctx.fillText(label.text, 256, 34);
+                    label.texture.needsUpdate = true;
+                }
+            }
+        });
+    }
+
+    // The car lift under the window: hazard stripes round a pit in the floor,
+    // a frame of posts with warning lights on top, and the platform with the car
+    private buildLift() {
+        const width = PIT.maxX - PIT.minX;
+        const length = PIT.maxZ - PIT.minZ;
+        const cx = (PIT.minX + PIT.maxX) / 2;
+        const cz = (PIT.minZ + PIT.maxZ) / 2;
+
+        // The shaft, drawn from inside only so its open top looks down into it
+        const shaftMaterial = new THREE.MeshBasicMaterial({ color: 0x050c22, side: THREE.BackSide });
+        this.flashMaterials.push({ material: shaftMaterial, base: shaftMaterial.color.clone() });
+        const shaft = new THREE.Mesh(new THREE.BoxGeometry(width, PIT.depth, length), shaftMaterial);
+        shaft.position.set(cx, FLOOR_Y - PIT.depth / 2, cz);
+        this.group.add(shaft);
+
+        const stripes = document.createElement('canvas');
+        stripes.width = 64;
+        stripes.height = 16;
+        const s = stripes.getContext('2d')!;
+        s.fillStyle = '#16182a';
+        s.fillRect(0, 0, 64, 16);
+        s.fillStyle = '#b8902a';
+        for (let x = -16; x < 64; x += 32) {
+            s.beginPath();
+            s.moveTo(x, 16);
+            s.lineTo(x + 16, 0);
+            s.lineTo(x + 32, 0);
+            s.lineTo(x + 16, 16);
+            s.fill();
+        }
+        const edge = 0.22;
+        const strips: [number, number, number, number][] = [
+            [width + edge * 2, cx, PIT.minZ - edge / 2, 0], [width + edge * 2, cx, PIT.maxZ + edge / 2, 0],
+            [length, PIT.minX - edge / 2, cz, Math.PI / 2], [length, PIT.maxX + edge / 2, cz, Math.PI / 2],
+        ];
+        for (const [stripLength, x, z, turn] of strips) {
+            const texture = new THREE.CanvasTexture(stripes);
+            texture.colorSpace = THREE.SRGBColorSpace;
+            texture.wrapS = THREE.RepeatWrapping;
+            texture.repeat.set(stripLength / 0.5, 1);
+            const strip = new THREE.Mesh(new THREE.PlaneGeometry(stripLength, edge), new THREE.MeshBasicMaterial({ map: texture }));
+            strip.rotation.set(-Math.PI / 2, 0, turn);
+            strip.position.set(x, FLOOR_Y + 0.005, z);
+            this.group.add(strip);
+        }
+
+        // Posts at the corners, joined across the top, with a warning light on
+        // each front post
+        const frame = lit(COLORS.pipeDark);
+        const height = 2.8;
+        const left = PIT.minX - 0.12;
+        const right = PIT.maxX + 0.12;
+        const back = PIT.minZ - 0.12;
+        const front = PIT.maxZ + 0.12;
+        for (const x of [left, right]) {
+            for (const z of [back, front]) {
+                const post = new THREE.Mesh(new THREE.BoxGeometry(0.14, height, 0.14), frame);
+                post.position.set(x, FLOOR_Y + height / 2, z);
+                this.group.add(post);
+            }
+            const rail = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.1, front - back), frame);
+            rail.position.set(x, FLOOR_Y + height - 0.05, cz);
+            this.group.add(rail);
+
+            const beacon = new THREE.MeshBasicMaterial({ color: 0xffa030 });
+            const light = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.09, 0.14, 8), beacon);
+            light.position.set(x, FLOOR_Y + height + 0.07, front);
+            this.group.add(light);
+            this.beacons.push(beacon);
+        }
+        const crossbar = new THREE.Mesh(new THREE.BoxGeometry(right - left, 0.12, 0.12), frame);
+        crossbar.position.set(cx, FLOOR_Y + height - 0.05, back);
+        this.group.add(crossbar);
+
+        // The platform, with the car parked nose out towards the room
+        this.lift = new THREE.Group();
+        this.lift.position.set(cx, LIFT_UP, cz);
+        const platform = new THREE.Mesh(new THREE.BoxGeometry(width - 0.08, 0.12, length - 0.08), lit(0x22325a));
+        platform.position.y = -0.06;
+        this.lift.add(platform);
+        const car = this.buildCar();
+        car.rotation.y = -Math.PI / 2;
+        this.lift.add(car);
+        this.group.add(this.lift);
+    }
+
+    // Up from the pit over a few seconds after the lab boots, warning lights
+    // flashing while it moves
+    private updateLift(now: number) {
+        const k = THREE.MathUtils.clamp((now - this.bootStart - LIFT_DELAY) / LIFT_TIME, 0, 1);
+        const eased = k * k * (3 - 2 * k);
+        this.lift.position.y = LIFT_DOWN + (LIFT_UP - LIFT_DOWN) * eased;
+        const moving = k > 0 && k < 1;
+        const on = moving && Math.floor(now / 250) % 2 === 0;
+        for (const beacon of this.beacons) beacon.color.setHex(on ? 0xffb040 : moving ? 0x5a3010 : 0x7a4818);
+    }
+
+    // A low red 80s wedge, after the silhouette of the car parked outside the
+    // lab in the game: a long nose, the cabin a little forward of centre and a
+    // long sloping rear deck with a lip at the tail. Built nose along +x with
+    // the ground at y = 0. No badges.
+    private buildCar(): THREE.Group {
+        const car = new THREE.Group();
+        const red = 0xc8161d;
+        const glass = lit(0x0b1631);
+        glass.side = THREE.DoubleSide;
+        const extrude = (points: [number, number][], depth: number, color: number) => {
+            const geometry = new THREE.ExtrudeGeometry(new THREE.Shape(points.map(([x, y]) => new THREE.Vector2(x, y))), {
+                depth, bevelEnabled: true, bevelThickness: 0.03, bevelSize: 0.025, bevelSegments: 1, curveSegments: 1,
+            });
+            geometry.translate(0, 0, -depth / 2);
+            car.add(new THREE.Mesh(geometry, lit(color)));
+        };
+
+        // Wheel arches along the bottom edge, from the back of each round to the front
+        const arch = (x: number): [number, number][] => {
+            const points: [number, number][] = [];
+            for (let i = 0; i <= 8; i++) {
+                const a = Math.PI - (i / 8) * Math.PI;
+                points.push([x + Math.cos(a) * 0.37, 0.33 + Math.sin(a) * 0.37]);
+            }
+            return points;
+        };
+        extrude([
+            [2.2, 0.3], [2.17, 0.43], [1.3, 0.63], [0.62, 0.77], [-0.55, 0.8], [-0.85, 0.98], [-1.4, 0.88],
+            [-2.02, 0.76], [-2.17, 0.84], [-2.21, 0.58], [-2.14, 0.22], [-1.86, 0.17],
+            ...arch(-1.46), [-1.06, 0.17], [0.9, 0.17], ...arch(1.29), [1.69, 0.19], [2.12, 0.22],
+        ], 1.84, red);
+        // The cabin, narrower than the body
+        extrude([[0.66, 0.74], [0.1, 1.06], [-0.7, 1.05], [-0.84, 0.76]], 1.34, red);
+
+        // Glass: a pane laid along a slope of the cabin's profile, spanning its width
+        const pane = (from: [number, number], to: [number, number], across: number) => {
+            const along = new THREE.Vector3(to[0] - from[0], to[1] - from[1], 0);
+            const mesh = new THREE.Mesh(new THREE.PlaneGeometry(along.length() * 0.9, across), glass);
+            along.normalize();
+            const out = new THREE.Vector3(along.y, -along.x, 0);
+            mesh.quaternion.setFromRotationMatrix(new THREE.Matrix4().makeBasis(along, new THREE.Vector3(0, 0, 1), out));
+            mesh.position.set((from[0] + to[0]) / 2, (from[1] + to[1]) / 2, 0).addScaledVector(out, 0.03);
+            car.add(mesh);
+        };
+        pane([0.66, 0.74], [0.1, 1.06], 1.22);
+        pane([-0.7, 1.05], [-0.84, 0.76], 1.1);
+        for (const side of [-1, 1]) {
+            const sideWindow = new THREE.Mesh(new THREE.ShapeGeometry(new THREE.Shape([
+                new THREE.Vector2(0.55, 0.8), new THREE.Vector2(0.13, 1.0), new THREE.Vector2(-0.6, 1.0), new THREE.Vector2(-0.7, 0.8),
+            ])), glass);
+            sideWindow.position.z = side * 0.705;
+            car.add(sideWindow);
+
+            // Strakes along the doors, in front of the rear wheels
+            for (let i = 0; i < 5; i++) {
+                const strake = new THREE.Mesh(new THREE.PlaneGeometry(1.2, 0.025), lit(0x2a0508));
+                strake.position.set(-0.45, 0.42 + i * 0.06, side * 0.956);
+                if (side < 0) strake.rotation.y = Math.PI;
+                car.add(strake);
+            }
+
+            for (const x of [1.29, -1.46]) {
+                const tyre = new THREE.Mesh(tube(0.33, 0.26, 'z', 14), lit(0x0a0f1e));
+                tyre.position.set(x, 0.33, side * 0.82);
+                car.add(tyre);
+                const hub = new THREE.Mesh(new THREE.CircleGeometry(0.2, 10), lit(0x6878a0));
+                hub.position.set(x, 0.33, side * 0.952);
+                if (side < 0) hub.rotation.y = Math.PI;
+                car.add(hub);
+            }
+
+            // Lamps in the nose, and tail lights in a black panel across the back
+            const lamp = new THREE.Mesh(new THREE.PlaneGeometry(0.3, 0.07), new THREE.MeshBasicMaterial({ color: 0xfff0c0 }));
+            lamp.position.set(2.235, 0.36, side * 0.6);
+            lamp.rotation.y = Math.PI / 2;
+            car.add(lamp);
+            const tail = new THREE.Mesh(new THREE.PlaneGeometry(0.4, 0.08), new THREE.MeshBasicMaterial({ color: 0xff3020 }));
+            tail.position.set(-2.255, 0.7, side * 0.55);
+            tail.rotation.y = -Math.PI / 2;
+            car.add(tail);
+        }
+        const grille = new THREE.Mesh(new THREE.PlaneGeometry(1.7, 0.16), new THREE.MeshBasicMaterial({ color: 0x14080a }));
+        grille.position.set(-2.25, 0.7, 0);
+        grille.rotation.y = -Math.PI / 2;
+        car.add(grille);
+        return car;
+    }
+
+    // The soda machine against the left wall, its front lit up in the dark
+    private buildSodaMachine() {
+        const machine = new THREE.Group();
+        machine.position.set(-7.55, FLOOR_Y, -4.5);
+        machine.rotation.y = Math.PI / 2;
+        const cabinet = new THREE.Mesh(new THREE.BoxGeometry(0.95, 1.95, 0.8), lit(0xa3141b));
+        cabinet.position.y = 0.975;
+        machine.add(cabinet);
+
+        const canvas = document.createElement('canvas');
+        canvas.width = 256;
+        canvas.height = 400;
+        const c = canvas.getContext('2d')!;
+        c.fillStyle = '#e8221e';
+        c.fillRect(0, 0, 256, 400);
+        // A big can down the left, with a white wave across it
+        c.fillStyle = '#a80c16';
+        c.beginPath();
+        c.roundRect(24, 76, 120, 250, 16);
+        c.fill();
+        c.fillStyle = '#c8ccd8';
+        c.fillRect(30, 76, 108, 12);
+        c.fillRect(30, 314, 108, 12);
+        c.fillStyle = '#ffffff';
+        c.beginPath();
+        c.moveTo(24, 200);
+        c.bezierCurveTo(60, 150, 100, 250, 144, 180);
+        c.lineTo(144, 208);
+        c.bezierCurveTo(100, 278, 60, 178, 24, 228);
+        c.closePath();
+        c.fill();
+        c.textAlign = 'center';
+        c.font = 'bold 56px Arial, sans-serif';
+        c.fillText('SODA', 128, 56);
+        c.font = 'bold 26px Arial, sans-serif';
+        c.fillText('ICE COLD', 96, 372);
+        // Selection buttons and the coin slot down the right
+        for (let i = 0; i < 6; i++) {
+            c.fillStyle = '#fff2e6';
+            c.fillRect(168, 82 + i * 38, 64, 28);
+            c.fillStyle = i % 2 ? '#e8221e' : '#2a2a48';
+            c.fillRect(174, 88 + i * 38, 14, 16);
+        }
+        c.fillStyle = '#1a0608';
+        c.fillRect(196, 322, 10, 30);
+        const texture = new THREE.CanvasTexture(canvas);
+        texture.colorSpace = THREE.SRGBColorSpace;
+        const front = new THREE.Mesh(new THREE.PlaneGeometry(0.8, 1.25), new THREE.MeshBasicMaterial({ map: texture }));
+        front.position.set(0, 1.2, 0.401);
+        machine.add(front);
+
+        // Where the cans drop out, and a kick plate along the bottom
+        const dark = new THREE.MeshBasicMaterial({ color: 0x1a0608 });
+        const tray = new THREE.Mesh(new THREE.PlaneGeometry(0.6, 0.24), dark);
+        tray.position.set(0, 0.36, 0.401);
+        machine.add(tray);
+        const kick = new THREE.Mesh(new THREE.PlaneGeometry(0.95, 0.1), dark);
+        kick.position.set(0, 0.05, 0.401);
+        machine.add(kick);
+        this.group.add(machine);
     }
 
     // The scientist in his chair at the console: low-poly solids with flat shading,
@@ -522,11 +965,23 @@ export class HoloLabScene {
         part(new THREE.CylinderGeometry(0.17, 0.15, 0.48, 6), COLORS.shirt, [0, 0.38, -0.02], [0.1, 0, 0], [1, 1, 0.72]);
         part(new THREE.BoxGeometry(0.46, 0.11, 0.24), COLORS.shirt, [0, 0.61, 0], [0.1, 0, 0]);
 
-        // Arms reaching forward to the keyboard
+        // Upper arms. The forearms and hands are posed every frame by updateHands()
+        // so he types when you type and works the mouse when you use yours.
+        // Facing +z, his left is +x and his right is -x.
         for (const side of [-1, 1]) {
             part(new THREE.BoxGeometry(0.1, 0.32, 0.1), COLORS.shirt, [side * 0.25, 0.47, 0.08], [-0.55, 0, side * 0.08]);
-            part(new THREE.BoxGeometry(0.09, 0.09, 0.32), COLORS.shirt, [side * 0.21, 0.33, 0.33]);
-            part(new THREE.BoxGeometry(0.08, 0.04, 0.1), COLORS.skin, [side * 0.18, 0.32, 0.53]);
+        }
+        for (const side of [1, -1]) {
+            const arm: Arm = {
+                forearm: part(new THREE.BoxGeometry(0.09, 0.09, 0.32), COLORS.shirt, [side * 0.21, 0.33, 0.33]),
+                hand: part(new THREE.BoxGeometry(0.08, 0.04, 0.1), COLORS.skin, [side * 0.14, 0.335, 0.62]),
+                elbow: new THREE.Vector3(side * 0.25, 0.335, 0.165),
+                home: new THREE.Vector3(side * 0.14, 0.335, 0.62),
+                key: new THREE.Vector3(),
+                pressedAt: -Infinity,
+            };
+            if (side === 1) this.leftArm = arm;
+            else this.rightArm = arm;
         }
 
         // Neck, head, nose and ears
@@ -566,9 +1021,21 @@ export class HoloLabScene {
         (skirt.material as THREE.MeshLambertMaterial).side = THREE.DoubleSide;
         part(new THREE.BoxGeometry(0.52, 0.025, 0.16), COLORS.keyboard, [0, 0.31, 0.64]);
 
+        // The mouse on its pad by his right hand, and a can of soda by his left
+        const pad = new THREE.Mesh(new THREE.PlaneGeometry(0.2, 0.17), new THREE.MeshBasicMaterial({ color: 0x0b1428, side: THREE.DoubleSide }));
+        pad.rotation.x = -Math.PI / 2;
+        pad.position.set(MOUSE_SPOT.x, 0.302, MOUSE_SPOT.z);
+        figure.add(pad);
+        this.mouse = part(new THREE.BoxGeometry(0.05, 0.03, 0.08), COLORS.keyboard, [MOUSE_SPOT.x, MOUSE_SPOT.y, MOUSE_SPOT.z]);
+        part(new THREE.CylinderGeometry(0.033, 0.033, 0.12, 10), 0xc8161d, [0.28, 0.36, 0.86]);
+        part(new THREE.CylinderGeometry(0.034, 0.034, 0.03, 10), 0xf0f0f0, [0.28, 0.37, 0.86]);
+        part(new THREE.CylinderGeometry(0.03, 0.033, 0.01, 10), 0xb8c0d0, [0.28, 0.425, 0.86]);
+
         for (const radius of [0.7, 0.8, 0.9]) {
             for (let i = 0; i < 16; i++) {
                 const side = i < 8 ? -1 : 1;
+                // Leave room for the mouse pad
+                if (side === -1 && radius < 0.85 && i % 8 < 2) continue;
                 const a = side * THREE.MathUtils.degToRad(26 + (i % 8) * 6);
                 const button = new THREE.Mesh(new THREE.PlaneGeometry(0.035, 0.022), new THREE.MeshBasicMaterial({
                     color: INDICATOR_COLORS[Math.floor(Math.random() * INDICATOR_COLORS.length)], transparent: true, side: THREE.DoubleSide
@@ -598,6 +1065,56 @@ export class HoloLabScene {
         figure.position.copy(SEAT_POSITION);
         figure.lookAt(new THREE.Vector3(LAB_BOX_CENTER.x, SEAT_POSITION.y, LAB_BOX_CENTER.z));
         this.group.add(figure);
+        this.figure = figure;
+    }
+
+    // Typing: a hand dips onto a key near where it rests. His right hand also
+    // leaves the mouse for the keyboard.
+    public keyPressed() {
+        this.mouseGoal = 0;
+        const arm = this.mouseInUse > 0.5 || Math.random() < 0.5 ? this.leftArm : this.rightArm;
+        arm.pressedAt = performance.now();
+        arm.key.set((Math.random() - 0.5) * 0.16, 0, (Math.random() - 0.5) * 0.07);
+    }
+
+    // The mouse in the 3D view moves his right hand to the desk's mouse, which
+    // slides the way yours does (seen from behind him, your right is his right)
+    public pointerMoved(dx: number, dy: number) {
+        this.mouseGoal = 1;
+        this.mouseSlide.x = THREE.MathUtils.clamp(this.mouseSlide.x - dx * 0.0006, -0.06, 0.06);
+        this.mouseSlide.y = THREE.MathUtils.clamp(this.mouseSlide.y - dy * 0.0006, -0.05, 0.05);
+    }
+
+    public pointerClicked() {
+        this.mouseGoal = 1;
+        this.rightArm.pressedAt = performance.now();
+        this.rightArm.key.set(0, 0, 0);
+    }
+
+    private updateHands(now: number) {
+        this.figure.updateMatrixWorld();
+        this.mouseInUse += (this.mouseGoal - this.mouseInUse) * 0.12;
+        // The mouse drifts back to the middle of its pad
+        this.mouseSlide.multiplyScalar(0.97);
+        this.mouse.position.set(MOUSE_SPOT.x + this.mouseSlide.x, MOUSE_SPOT.y, MOUSE_SPOT.z + this.mouseSlide.y);
+
+        for (const arm of [this.leftArm, this.rightArm]) {
+            const since = now - arm.pressedAt;
+            const tapping = since < 150;
+            const target = arm.home.clone();
+            if (tapping) target.add(arm.key);
+            if (arm === this.rightArm) {
+                target.lerp(this.mouse.position.clone().add(new THREE.Vector3(0, 0.03, -0.015)), this.mouseInUse);
+            }
+            if (tapping) target.y -= Math.sin((since / 150) * Math.PI) * 0.022;
+
+            // Hand at the target, forearm stretched from the elbow to it
+            arm.hand.position.copy(target);
+            arm.forearm.position.copy(arm.elbow).add(target).multiplyScalar(0.5);
+            arm.forearm.lookAt(this.figure.localToWorld(target.clone()));
+            arm.forearm.scale.z = arm.elbow.distanceTo(target) / 0.32;
+            arm.hand.quaternion.copy(arm.forearm.quaternion);
+        }
     }
 
     // Start the boot sequence, greeting the user by name
@@ -608,7 +1125,84 @@ export class HoloLabScene {
         this.bootStart = performance.now();
         // The storm makes itself known soon after the display comes up
         this.nextFlash = this.bootStart + 4500;
+        this.setScreen('boot');
+    }
+
+    private setScreen(screen: LabScreen) {
+        if (screen === this.labScreen) return;
+        this.labScreen = screen;
+        this.hovered = null;
         this.drawnKey = '';
+        if (screen === 'accelerator') {
+            this.experimentStart = performance.now();
+            this.struck = false;
+        }
+        this.onScreenChange?.();
+    }
+
+    public getScreen(): LabScreen {
+        return this.labScreen;
+    }
+
+    public showingProgram(): boolean {
+        return this.labScreen === 'program';
+    }
+
+    // Typing on the cubes or the accelerator opens the terminal (or file graph)
+    public openProgram() {
+        if (this.labScreen === 'home' || this.labScreen === 'accelerator') this.setScreen('program');
+    }
+
+    public goHome() {
+        if (this.labScreen !== 'boot') this.setScreen('home');
+    }
+
+    private buttonAt(ray: THREE.Raycaster): LabButton | null {
+        const live = this.buttons.filter((button) => button.showOn.includes(this.labScreen) && button.appear > 0.5);
+        const hit = ray.intersectObjects(live.map((button) => button.pick), false)[0];
+        return hit ? live.find((button) => button.pick === hit.object) ?? null : null;
+    }
+
+    // Point at a cube and it grows and shows its label. Says whether one is under the pointer.
+    public hover(ray: THREE.Raycaster): boolean {
+        this.hovered = this.buttonAt(ray);
+        return this.hovered !== null;
+    }
+
+    // Click a cube to open its program, or the X cube to close it
+    public click(ray: THREE.Raycaster): boolean {
+        const button = this.buttonAt(ray);
+        if (!button) return false;
+        this.setScreen(button.opens);
+        return true;
+    }
+
+    // The game draws its picture into a canvas of its own
+    public setGameCanvas(canvas: HTMLCanvasElement) {
+        if (this.gameTexture.image === canvas) return;
+        this.gameTexture.dispose();
+        this.gameTexture = new THREE.CanvasTexture(canvas);
+        this.gameTexture.colorSpace = THREE.SRGBColorSpace;
+        this.gameTexture.magFilter = THREE.NearestFilter;
+        this.gameTexture.minFilter = THREE.LinearFilter;
+        this.gameTexture.generateMipmaps = false;
+        const material = this.gameScreen.material as THREE.MeshBasicMaterial;
+        material.map = this.gameTexture;
+        material.needsUpdate = true;
+    }
+
+    public gameFrameReady() {
+        this.gameTexture.needsUpdate = true;
+    }
+
+    // The experiment's lightning strike: the brightest flash of the storm, and
+    // the room shakes
+    private strike(now: number) {
+        this.flashStart = now;
+        this.flashStrength = 0.9;
+        this.nextFlash = now + 9000 + Math.random() * 6000;
+        this.makeBolt();
+        this.shakeUntil = now + 700;
     }
 
     public setText(lines: string[], cursorRow: number, cursorCol: number) {
@@ -659,10 +1253,22 @@ export class HoloLabScene {
             ORBIT_PIVOT.z + radius * Math.cos(view.pitch) * Math.cos(view.yaw) + Math.sin(t * 0.17) * 0.03
         );
         camera.position.y = Math.max(camera.position.y, FLOOR_CLEARANCE);
+        // The lightning strike shakes the room
+        if (now < this.shakeUntil) {
+            const k = (this.shakeUntil - now) / 700;
+            camera.position.x += (Math.random() - 0.5) * 0.09 * k;
+            camera.position.y += (Math.random() - 0.5) * 0.09 * k;
+        }
         camera.lookAt(ORBIT_PIVOT);
 
-        // The boot sequence always shows; after it the box holds the terminal or the graph
-        this.screen.visible = this.content === 'terminal' || this.isBooting();
+        // Once booted, the display shows the program cubes, or what they opened
+        if (this.labScreen === 'boot' && !this.isBooting()) this.setScreen('home');
+        const screen = this.labScreen;
+        this.screen.visible = screen !== 'game' && (screen !== 'program' || this.content === 'terminal');
+        this.gameScreen.visible = screen === 'game';
+        this.updateLauncher(t);
+        this.updateHands(now);
+        this.updateLift(now);
 
         this.particle.position.set(Math.sin(t * 0.4) * 1.1, Math.sin(t * 0.53) * 0.6 - 0.2, Math.cos(t * 0.37) * 0.45);
         this.particle.rotation.set(t * 0.7, t * 0.5, t * 0.3);
@@ -681,13 +1287,161 @@ export class HoloLabScene {
 
     private drawScreen(now: number) {
         const elapsed = (now - this.bootStart) / 1000;
-        if (elapsed < BOOT_ID_END) {
-            this.drawIdentification(elapsed);
-        } else if (elapsed < BOOT_END) {
-            this.drawBanner(elapsed - BOOT_ID_END, now);
-        } else {
-            this.drawTerminal(now);
+        switch (this.labScreen) {
+            case 'boot':
+                if (elapsed < BOOT_ID_END) this.drawIdentification(elapsed);
+                else this.drawBanner(elapsed - BOOT_ID_END, now);
+                break;
+            case 'home':
+                // Just the display's frame round the cubes
+                if (this.drawnKey !== 'home') {
+                    this.drawnKey = 'home';
+                    this.beginFrame();
+                    this.texture.needsUpdate = true;
+                }
+                break;
+            case 'accelerator':
+                this.drawAccelerator(now);
+                break;
+            case 'program':
+                if (this.content === 'terminal') this.drawTerminal(now);
+                break;
         }
+    }
+
+    // The accelerator program, after the "Theoretical study" screen in the game:
+    // the particle is injected, sped round the ring and fired off at the lab,
+    // which brings a lightning strike down on it before the display settles
+    private drawAccelerator(now: number) {
+        const t = (now - this.experimentStart) / 1000;
+        if (t >= EJECT_END && !this.struck) {
+            this.struck = true;
+            this.strike(now);
+        }
+        const ctx = this.ctx;
+        this.beginFrame();
+
+        this.setFont(1.1, '6px');
+        ctx.textAlign = 'center';
+        ctx.fillText('--- Theoretical study ---', CANVAS_WIDTH / 2, 24);
+        ctx.textAlign = 'left';
+
+        // The two test rooms on the left, each with its marker in the corner
+        ctx.lineWidth = 2;
+        // (lower than in the game, so the phase text above them clears his head)
+        const rooms: [string, number, number][] = [['room 3', 190, 130], ['room 1', 350, 200]];
+        for (const [label, top, height] of rooms) {
+            ctx.strokeStyle = TEXT_DIM;
+            ctx.strokeRect(60, top, 440, height);
+            const x = 472;
+            const y = top + 12;
+            ctx.strokeRect(x, y, 16, 16);
+            ctx.beginPath();
+            ctx.moveTo(x, y);
+            ctx.lineTo(x + 16, y + 16);
+            ctx.moveTo(x + 16, y);
+            ctx.lineTo(x, y + 16);
+            ctx.stroke();
+            this.setFont(0.8, '2px');
+            ctx.fillStyle = TEXT_DIM;
+            ctx.fillText(label, 72, top + 10);
+        }
+
+        // The ring, the injector line up into it, and the exit line to the lab
+        const ring = { x: 745, y: 285, r: 200 };
+        const injector = { x: ring.x - ring.r, y: 490 };
+        const exit = { x: ring.x + ring.r * Math.cos(Math.PI / 3), y: ring.y + ring.r * Math.sin(Math.PI / 3) };
+        const lab = { x: 770, y: 600 };
+        ctx.strokeStyle = TEXT_COLOR;
+        ctx.lineWidth = 4;
+        ctx.beginPath();
+        ctx.arc(ring.x, ring.y, ring.r, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.moveTo(injector.x, ring.y);
+        ctx.lineTo(injector.x, injector.y);
+        ctx.moveTo(exit.x, exit.y);
+        ctx.lineTo(lab.x, lab.y);
+        ctx.stroke();
+        ctx.fillStyle = TEXT_COLOR;
+        ctx.fillRect(injector.x - 10, injector.y - 2, 20, 22);
+        ctx.beginPath();
+        ctx.moveTo(lab.x, lab.y - 14);
+        ctx.lineTo(lab.x + 14, lab.y);
+        ctx.lineTo(lab.x, lab.y + 14);
+        ctx.lineTo(lab.x - 14, lab.y);
+        ctx.closePath();
+        ctx.fill();
+        this.setFont(0.8, '2px');
+        ctx.fillText('LAB', lab.x + 26, lab.y - 8);
+
+        // The particle: up the injector, round and round the ring faster and
+        // faster, then off down the exit line into the lab
+        const span = ACCEL_END - INJECT_END;
+        const accel = (2 * (ACCEL_SWEEP - ACCEL_START_SPEED * span)) / (span * span);
+        const onRing = (a: number) => ({ x: ring.x + ring.r * Math.cos(a), y: ring.y + ring.r * Math.sin(a) });
+        let particle = lab;
+        let speed = 0;
+        const trail: { x: number; y: number }[] = [];
+        if (t < INJECT_END) {
+            const k = THREE.MathUtils.clamp((t - 0.5) / (INJECT_END - 0.5), 0, 1);
+            particle = { x: injector.x, y: injector.y + (ring.y - injector.y) * k };
+        } else if (t < ACCEL_END) {
+            const s = t - INJECT_END;
+            speed = ACCEL_START_SPEED + accel * s;
+            const angle = Math.PI + ACCEL_START_SPEED * s + 0.5 * accel * s * s;
+            particle = onRing(angle);
+            for (let i = 1; i <= 10; i++) trail.push(onRing(angle - i * Math.min(speed * 0.02, 0.09)));
+        } else if (t < EJECT_END) {
+            const k = (t - ACCEL_END) / (EJECT_END - ACCEL_END);
+            particle = { x: exit.x + (lab.x - exit.x) * k, y: exit.y + (lab.y - exit.y) * k };
+        }
+        trail.forEach((point, i) => {
+            ctx.fillStyle = `rgba(255, 190, 90, ${0.6 * (1 - i / trail.length)})`;
+            ctx.beginPath();
+            ctx.arc(point.x, point.y, 6 - i * 0.4, 0, Math.PI * 2);
+            ctx.fill();
+        });
+        if (t < EJECT_END || Math.floor(now / 300) % 2 === 0) {
+            ctx.fillStyle = '#ffc060';
+            ctx.beginPath();
+            ctx.arc(particle.x, particle.y, 8, 0, Math.PI * 2);
+            ctx.fill();
+        }
+        if (t >= INJECT_END && t < EJECT_END) {
+            const c = t < ACCEL_END ? 0.12 + 0.87 * ((speed - ACCEL_START_SPEED) / (accel * span)) : 0.99;
+            this.setFont(0.9, '3px');
+            ctx.textAlign = 'center';
+            ctx.fillText(`v = ${c.toFixed(3)} c`, ring.x, ring.y - 10);
+            ctx.textAlign = 'left';
+        }
+
+        const [heading, line] =
+            t < INJECT_END ? ['- Phase 0:', 'Particle INJECTION.'] :
+            t < ACCEL_END ? ['- Phase 1:', 'Particle ACCELERATION.'] :
+            t < EJECT_END ? ['- Phase 2:', 'EJECTION towards the LAB.'] :
+            t < SURGE_END ? ['- WARNING:', 'Energy surge in the LAB!'] :
+            ['- Experiment complete.', 'Result: unexplained.'];
+        this.setFont(1.15, '4px');
+        if (t < EJECT_END || t >= SURGE_END || Math.floor(now / 250) % 2 === 0) {
+            ctx.fillText(heading, 60, 88);
+            ctx.fillText(line, 60, 126);
+        }
+
+        // The strike whites out the display and tears it for a moment
+        const sinceStrike = t - EJECT_END;
+        if (sinceStrike >= 0 && sinceStrike < 0.9) {
+            const k = 1 - sinceStrike / 0.9;
+            for (let i = 0; i < 6; i++) {
+                const y = Math.random() * CANVAS_HEIGHT;
+                const h = 10 + Math.random() * 50;
+                ctx.drawImage(this.canvas, 0, y, CANVAS_WIDTH, h, (Math.random() - 0.5) * 80 * k, y, CANVAS_WIDTH, h);
+            }
+            ctx.fillStyle = `rgba(225, 255, 215, ${0.75 * k * k})`;
+            ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+        }
+        this.texture.needsUpdate = true;
     }
 
     private beginFrame() {
@@ -835,5 +1589,6 @@ export class HoloLabScene {
             material?.dispose();
         });
         this.texture.dispose();
+        this.gameTexture.dispose();
     }
 }

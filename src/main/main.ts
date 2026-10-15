@@ -3,6 +3,7 @@ import * as os from 'os';
 import * as path from 'path';
 import { createPty } from './pty';
 import { listDirectory, fileInfo } from './files';
+import { loadGame, pickGame } from './games';
 
 let mainWindow: BrowserWindow | null = null;
 
@@ -110,6 +111,10 @@ app.on('ready', () => {
   ipcMain.handle('fs-file-info', (event, filePath: string) => fileInfo(filePath));
 
   ipcMain.handle('get-user-name', () => os.userInfo().username);
+
+  // The DOS game on the lab's display
+  ipcMain.handle('game-load', () => loadGame());
+  ipcMain.handle('game-pick', () => pickGame(mainWindow));
 
   // Opens the containing folder in Explorer with the file selected
   ipcMain.on('fs-show-in-explorer', (event, filePath: string) => {

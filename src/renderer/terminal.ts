@@ -302,10 +302,17 @@ if (terminalContainer) {
         holoContentSwitch?.querySelectorAll('button').forEach((button) => {
             button.classList.toggle('active', button.dataset.content === content);
         });
-        holoPromptLine?.classList.toggle('hidden', content !== 'files');
-        holoPathBar?.classList.toggle('hidden', content !== 'files');
-        if (content !== 'files') filePanel.close();
+        updateHoloOverlays();
         syncTerminalToHolo();
+    }
+
+    // The file graph's input line and path bar show only while the graph is on
+    // screen (in the lab, once its cube has been opened)
+    function updateHoloOverlays() {
+        const graphShowing = holoContent === 'files' && (holoSetting !== 'lab' || !!holoCubeScene?.labShowingProgram());
+        holoPromptLine?.classList.toggle('hidden', !graphShowing);
+        holoPathBar?.classList.toggle('hidden', !graphShowing);
+        if (!graphShowing) filePanel.close();
     }
 
     holoSettingSwitch?.querySelectorAll('button').forEach((button) => {
@@ -340,6 +347,7 @@ if (terminalContainer) {
                 if (holoCubeScene) {
                     holoCubeScene.onFilePicked = typePathAtPrompt;
                     holoCubeScene.onFileOpened = filePanel.open;
+                    holoCubeScene.onLabScreenChange = updateHoloOverlays;
                 }
             }
             if (holoCubeScene) {
@@ -411,6 +419,8 @@ if (terminalContainer) {
     // Cube button click handler
     cubeBtn?.addEventListener('click', toggleCubeMode);
 
+    const TYPED_KEYS = ['Enter', 'Backspace', 'Tab', 'Escape', 'ArrowUp', 'ArrowDown', 'ArrowRight', 'ArrowLeft'];
+
     // Keyboard shortcut: Ctrl+3 for cube mode
     document.addEventListener('keydown', (e) => {
         if (e.ctrlKey && e.key === '3') {
@@ -421,6 +431,10 @@ if (terminalContainer) {
         
         // Forward keyboard input to terminal when in cube mode
         if (cubeModeActive && !e.ctrlKey && !e.altKey && !e.metaKey) {
+            // In the lab the scientist types along, and a key on the program
+            // cubes opens the terminal
+            if (e.key.length === 1 || TYPED_KEYS.includes(e.key)) holoCubeScene?.labKeyPressed();
+
             // Handle special keys
             if (e.key === 'Enter') {
                 window.electronAPI.sendPtyInput('\r');

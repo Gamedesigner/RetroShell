@@ -31,6 +31,8 @@ export interface ElectronAPI {
   getFileInfo: (filePath: string) => Promise<FileInfo | null>;
   showInExplorer: (filePath: string) => void;
   getUserName: () => Promise<string>;
+  loadGame: () => Promise<Uint8Array | null>;
+  pickGame: () => Promise<Uint8Array | null>;
 }
 
 declare global {

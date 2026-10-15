@@ -20,4 +20,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   showInExplorer: (filePath: string) => ipcRenderer.send('fs-show-in-explorer', filePath),
   // For the LAB mode's greeting
   getUserName: () => ipcRenderer.invoke('get-user-name'),
+  // The DOS game on the lab's display: the stored copy, or ask for one
+  loadGame: () => ipcRenderer.invoke('game-load'),
+  pickGame: () => ipcRenderer.invoke('game-pick'),
 });

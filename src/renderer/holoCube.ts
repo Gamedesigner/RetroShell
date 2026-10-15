@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { HoloTextRenderer } from './holoText';
 import { HoloFileGraph } from './holoGraph';
 import { HoloLabScene, LAB_BOX_CENTER, LAB_GRAPH_FIT, LAB_PALETTE } from './holoLab';
+import { LabGame } from './labGame';
 import { HoloPalette } from './themes';
 
 // The 3D view is a setting (the open space around the cube, or the lab) showing
@@ -41,10 +42,14 @@ export class HoloCubeScene {
 
     // The lab: the content on a scientist's display in an Another World style lab
     private lab: HoloLabScene;
+    // The DOS game its third cube opens
+    private game = new LabGame();
 
     // Called with the full path when a file node is clicked / double-clicked
     public onFilePicked: ((filePath: string) => void) | null = null;
     public onFileOpened: ((filePath: string) => void) | null = null;
+    // Called when the lab's display opens or closes a program
+    public onLabScreenChange: (() => void) | null = null;
     // A file click waits briefly in case it turns out to be a double-click
     private pendingPick: ReturnType<typeof setTimeout> | null = null;
 
@@ -87,6 +92,14 @@ export class HoloCubeScene {
         // File graph and lab, hidden until the mode is switched
         this.graph = new HoloFileGraph(this.scene);
         this.lab = new HoloLabScene(this.scene);
+        this.lab.setGameCanvas(this.game.canvas);
+        this.lab.onScreenChange = () => {
+            this.syncGame();
+            this.onLabScreenChange?.();
+        };
+        this.game.onFrame = () => this.lab.gameFrameReady();
+        this.game.onKey = () => this.lab.keyPressed();
+        this.game.onExit = () => this.lab.goHome();
 
         // Set initial rotation
         this.cube.rotation.x = this.cubeRotation.x;
@@ -119,6 +132,8 @@ export class HoloCubeScene {
         const canvas = this.renderer.domElement;
 
         canvas.addEventListener('mousedown', (e) => {
+            // In the lab the scientist's hand works his mouse along with yours
+            if (this.setting === 'lab') this.lab.pointerClicked();
             this.isDragging = true;
             this.dragDistance = 0;
             if (this.showingCube()) this.autoRotate = false;
@@ -126,11 +141,13 @@ export class HoloCubeScene {
         });
 
         canvas.addEventListener('mousemove', (e) => {
+            if (this.setting === 'lab') this.lab.pointerMoved(e.movementX, e.movementY);
             if (!this.isDragging) {
-                // Point at clickable nodes in the file graph
-                if (this.content === 'files') {
-                    canvas.style.cursor = this.graph.hover(this.aimRaycaster(e)) ? 'pointer' : '';
-                }
+                // Point at the lab display's cubes, or clickable nodes in the file graph
+                const ray = this.aimRaycaster(e);
+                const overCube = this.setting === 'lab' && this.lab.hover(ray);
+                const overNode = this.graphActive() && this.graph.hover(ray);
+                canvas.style.cursor = overCube || overNode ? 'pointer' : '';
                 return;
             }
 
@@ -158,8 +175,12 @@ export class HoloCubeScene {
         });
 
         canvas.addEventListener('mouseup', (e) => {
-            // A left press without a drag is a click on the file graph
-            if (e.button === 0 && this.isDragging && this.content === 'files' && this.dragDistance < 5) {
+            // A left press without a drag is a click on one of the lab display's
+            // cubes, or on the file graph
+            const clicked = e.button === 0 && this.isDragging && this.dragDistance < 5;
+            if (clicked && this.setting === 'lab' && this.lab.click(this.aimRaycaster(e))) {
+                canvas.style.cursor = '';
+            } else if (clicked && this.graphActive()) {
                 const filePath = this.graph.click(this.aimRaycaster(e));
                 this.cancelPendingPick();
                 if (filePath) {
@@ -180,7 +201,7 @@ export class HoloCubeScene {
         // it puts the cube, or the lab's camera, back where it started
         canvas.addEventListener('dblclick', (e) => {
             const ray = this.aimRaycaster(e);
-            if (this.content === 'files' && this.graph.nodeAt(ray)) {
+            if (this.graphActive() && this.graph.nodeAt(ray)) {
                 this.cancelPendingPick();
                 const filePath = this.graph.doubleClick(ray);
                 if (filePath) this.onFileOpened?.(filePath);
@@ -195,7 +216,7 @@ export class HoloCubeScene {
         // Right-click a folder in the file graph to put it at the centre
         canvas.addEventListener('contextmenu', (e) => {
             e.preventDefault();
-            if (this.content === 'files' && this.dragDistance < 5) {
+            if (this.graphActive() && this.dragDistance < 5) {
                 this.graph.centerOn(this.aimRaycaster(e));
             }
         });
@@ -214,6 +235,12 @@ export class HoloCubeScene {
 
     private showingCube(): boolean {
         return this.setting === 'space' && this.content === 'terminal';
+    }
+
+    // Whether the file graph is on screen to point at and click (in the lab,
+    // only once its cube has been opened)
+    private graphActive(): boolean {
+        return this.content === 'files' && (this.setting !== 'lab' || this.lab.showingProgram());
     }
 
     private cancelPendingPick() {
@@ -243,6 +270,7 @@ export class HoloCubeScene {
         this.lab.setContent(content);
         if (content === 'files') this.showFolder(directory);
         if (arrivingInLab) this.bootLab(userName);
+        if (setting !== 'lab') this.game.close();
 
         // In the lab the graph takes the display's green
         const palette = setting === 'lab' ? LAB_PALETTE : this.themePalette;
@@ -251,6 +279,25 @@ export class HoloCubeScene {
 
     public bootLab(userName: string) {
         this.lab.startBoot(userName);
+    }
+
+    // A key typed in the lab: he types it, and on the cubes or the accelerator
+    // it opens the terminal (or file graph)
+    public labKeyPressed() {
+        if (this.setting !== 'lab') return;
+        this.lab.keyPressed();
+        this.lab.openProgram();
+    }
+
+    // The game plays only while it is on the lab's display and the 3D view is up
+    private syncGame() {
+        if (this.animationId !== null && this.setting === 'lab' && this.lab.getScreen() === 'game') void this.game.open();
+        else this.game.close();
+    }
+
+    // Whether the lab's display is showing the terminal or file graph
+    public labShowingProgram(): boolean {
+        return this.lab.showingProgram();
     }
 
     // What the lab's display shows: the terminal's lines and its cursor
@@ -300,6 +347,7 @@ export class HoloCubeScene {
             cancelAnimationFrame(this.animationId);
             this.animationId = null;
         }
+        this.game.close();
     }
 
     private animate = () => {
@@ -312,7 +360,7 @@ export class HoloCubeScene {
             this.cube.visible = false;
             this.lab.update(this.camera);
 
-            const showGraph = this.content === 'files' && !this.lab.isBooting();
+            const showGraph = this.graphActive();
             this.graph.group.visible = showGraph;
             if (showGraph) {
                 // Scaled to stay inside the box as folders open and close
@@ -397,6 +445,7 @@ export class HoloCubeScene {
         this.textRenderer.dispose();
         this.graph.dispose();
         this.lab.dispose();
+        this.game.dispose();
         this.renderer.dispose();
         if (this.renderer.domElement.parentNode) {
             this.renderer.domElement.parentNode.removeChild(this.renderer.domElement);
