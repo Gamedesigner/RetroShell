@@ -32,7 +32,32 @@ const COLORS = {
     chair: 0x24365f,
     chairDark: 0x16223f,
     keyboard: 0x0e1a36,
+    ceiling: 0x081227,
+    collar: 0x0a1a3c,
+    bolt: 0x2b4f88,
+    pipe: 0x35588f,
+    pipeDark: 0x22406e,
+    magnetRed: 0x7a2f3e,
+    magnetBlue: 0x2c4a8c,
+    tray: 0x1d3562,
+    windowFrame: 0x0a1530,
+    sky: 0x13244d,
+    monitorCase: 0x22345f,
+    deskTop: 0x2c4c80,
+    deskSide: 0x16295a,
 };
+
+// What the room's flat colours brighten towards in a lightning flash
+const FLASH_COLOR = new THREE.Color(0x5a7ab8);
+const FLASH_SKY = new THREE.Color(0xe2ecff);
+
+// Made-up status lines for the wall monitors
+const MONITOR_LINES = [
+    'BEAM CURRENT  #.# mA', 'MAGNET ##     OK', 'VACUUM  #.#E-9 TORR', 'RF CAVITY #   SYNC',
+    'SHIELD 1      OFF', 'SHIELD 2      ON', 'TARGET TEMP   ### K', 'INJECTOR      READY',
+    'LOOP ##       STABLE', 'ORBIT DRIFT   0.0#', 'CRYO LEVEL    ##%', 'STORM CELL    ## KM',
+    'PARTICLE E    ##%', 'SYNCHROTRON   ON', 'DETECTOR #    LIVE', 'KICKER        ARMED',
+];
 const INDICATOR_COLORS = [0x5ff2f2, 0xffffff, 0x5ff2f2, 0xe24a3a, 0x5ff2f2, 0xffffff];
 
 const TEXT_COLOR = '#a8f0a2';
@@ -55,7 +80,7 @@ const HOME_CAMERA = new THREE.Vector3(-0.94, -0.02, 3.54);
 const YAW_RANGE = THREE.MathUtils.degToRad(60);
 const PITCH_DOWN = THREE.MathUtils.degToRad(15);
 const PITCH_UP = THREE.MathUtils.degToRad(25);
-const ZOOM_RANGE = { min: 2.6, max: 8 };
+const ZOOM_RANGE = { min: 2.6, max: 7 };
 // Swinging away from home pulls the camera back to this distance, so a side
 // view takes in the whole box instead of staring into one wall of it
 const SWING_RADIUS = 5.2;
@@ -71,6 +96,19 @@ const MARGIN = 26;
 
 function flat(color: number, opacity: number = 1): THREE.MeshBasicMaterial {
     return new THREE.MeshBasicMaterial({ color, transparent: opacity < 1, opacity, side: THREE.DoubleSide });
+}
+
+// Faceted, lit material for the room's solid machinery
+function lit(color: number): THREE.MeshLambertMaterial {
+    return new THREE.MeshLambertMaterial({ color, flatShading: true });
+}
+
+// A cylinder lying along the x or z axis, or standing along y
+function tube(radius: number, length: number, axis: 'x' | 'y' | 'z', segments: number = 10): THREE.CylinderGeometry {
+    const geometry = new THREE.CylinderGeometry(radius, radius, length, segments);
+    if (axis === 'x') geometry.rotateZ(Math.PI / 2);
+    if (axis === 'z') geometry.rotateX(Math.PI / 2);
+    return geometry;
 }
 
 // Camera placement around the pivot
@@ -109,6 +147,21 @@ export class HoloLabScene {
     private bootStart = -Infinity;
     private greeting = 'Good evening.';
 
+    // The storm: rain down the window and now and then a lightning flash that
+    // lights up the room
+    private flashMaterials: { material: THREE.MeshBasicMaterial; base: THREE.Color }[] = [];
+    private skyMaterial!: THREE.MeshBasicMaterial;
+    private rainTexture!: THREE.CanvasTexture;
+    private bolt!: THREE.Mesh;
+    private lightning!: THREE.DirectionalLight;
+    private ambient!: THREE.AmbientLight;
+    private flashStart = -Infinity;
+    private nextFlash = performance.now() + 6000;
+    private lastUpdate = performance.now();
+
+    // Wall monitors scrolling status lines
+    private monitors: { ctx: CanvasRenderingContext2D; texture: THREE.CanvasTexture; lines: string[]; next: number }[] = [];
+
     constructor(parent: THREE.Object3D) {
         this.canvas.width = CANVAS_WIDTH;
         this.canvas.height = CANVAS_HEIGHT;
@@ -117,71 +170,276 @@ export class HoloLabScene {
         this.texture.colorSpace = THREE.SRGBColorSpace;
 
         this.buildRoom();
+        this.buildMachinery();
+        this.buildWindow();
+        this.buildMonitors();
         this.buildConsole();
         this.particle = this.buildBox();
         this.buildScientist();
 
-        // Only the scientist is lit: cool room light from behind him, and the
-        // display's green glow on his face. (three.js lights need about pi times
-        // the intensity for a surface to show its full colour.)
-        this.group.add(new THREE.AmbientLight(0x8090c0, 1.6));
+        // The scientist and the machinery are lit: cool room light from behind
+        // him, the display's green glow on his face, and the lightning through
+        // the window. (three.js lights need about pi times the intensity for a
+        // surface to show its full colour.)
+        this.ambient = new THREE.AmbientLight(0x8090c0, 1.6);
+        this.group.add(this.ambient);
         const glow = new THREE.DirectionalLight(0xb0f5aa, 3.5);
         glow.position.set(LAB_BOX_CENTER.x, LAB_BOX_CENTER.y + 0.4, LAB_BOX_CENTER.z + 0.6);
         glow.target.position.set(SEAT_POSITION.x, SEAT_POSITION.y + 0.9, SEAT_POSITION.z);
         const fill = new THREE.DirectionalLight(0xa0b0e0, 3.0);
         fill.position.set(-1, 4, 8);
-        this.group.add(glow, glow.target, fill);
+        this.lightning = new THREE.DirectionalLight(0xdfe8ff, 0);
+        this.lightning.position.set(8, 3, -3);
+        this.group.add(glow, glow.target, fill, this.lightning);
 
         this.group.visible = false;
         parent.add(this.group);
     }
 
+    // A flat colour that brightens with the lightning
+    private roomFlat(color: number): THREE.MeshBasicMaterial {
+        const material = flat(color);
+        this.flashMaterials.push({ material, base: material.color.clone() });
+        return material;
+    }
+
     private buildRoom() {
-        // The room's walls and ceiling all round, so no view ever looks out of it
-        const room = new THREE.Mesh(new THREE.BoxGeometry(60, 30, 40), new THREE.MeshBasicMaterial({ color: COLORS.wall, side: THREE.BackSide }));
-        room.position.set(0, 5, 11.95);
+        // Walls all round, sized so swinging the camera shows them rather than empty space
+        const roomMaterial = new THREE.MeshBasicMaterial({ color: COLORS.wall, side: THREE.BackSide });
+        this.flashMaterials.push({ material: roomMaterial, base: roomMaterial.color.clone() });
+        const room = new THREE.Mesh(new THREE.BoxGeometry(16, 8.6, 22), roomMaterial);
+        room.position.set(0, 2.7, 2.95);
         this.group.add(room);
 
-        const floor = new THREE.Mesh(new THREE.PlaneGeometry(40, 30), flat(COLORS.floor));
+        const floor = new THREE.Mesh(new THREE.PlaneGeometry(16, 22), this.roomFlat(COLORS.floor));
         floor.rotation.x = -Math.PI / 2;
-        floor.position.set(0, -1.45, -2);
+        floor.position.set(0, -1.45, 2.95);
         this.group.add(floor);
 
-        // The great round vault door of the accelerator, behind the desk
+        const ceiling = new THREE.Mesh(new THREE.PlaneGeometry(16, 22), this.roomFlat(COLORS.ceiling));
+        ceiling.rotation.x = Math.PI / 2;
+        ceiling.position.set(0, 6.95, 2.95);
+        this.group.add(ceiling);
+
+        // The great round vault door of the accelerator, behind the desk, in a
+        // heavy bolted collar with hinges down its left side
         const door = new THREE.Group();
         door.position.set(2.8, 1.5, -7.9);
-        door.add(new THREE.Mesh(new THREE.RingGeometry(4.1, 4.7, 48), flat(COLORS.doorRim)));
-        door.add(new THREE.Mesh(new THREE.CircleGeometry(4.1, 48), flat(COLORS.door)));
+        door.add(new THREE.Mesh(new THREE.RingGeometry(4.7, 5.3, 48), this.roomFlat(COLORS.collar)));
+        door.add(new THREE.Mesh(new THREE.RingGeometry(4.1, 4.7, 48), this.roomFlat(COLORS.doorRim)));
+        door.add(new THREE.Mesh(new THREE.CircleGeometry(4.1, 48), this.roomFlat(COLORS.door)));
+        for (let i = 0; i < 16; i++) {
+            const angle = (i / 16) * Math.PI * 2;
+            const boltHead = new THREE.Mesh(new THREE.CircleGeometry(0.13, 8), this.roomFlat(COLORS.bolt));
+            boltHead.position.set(Math.sin(angle) * 5.0, Math.cos(angle) * 5.0, 0.02);
+            door.add(boltHead);
+        }
         for (let i = 0; i < 8; i++) {
-            const spoke = new THREE.Mesh(new THREE.PlaneGeometry(0.42, 3.2), flat(COLORS.doorSpoke));
+            const spoke = new THREE.Mesh(new THREE.PlaneGeometry(0.42, 3.2), this.roomFlat(COLORS.doorSpoke));
             const angle = (i / 8) * Math.PI * 2;
             spoke.position.set(Math.sin(angle) * 2.5, Math.cos(angle) * 2.5, 0.01);
             spoke.rotation.z = -angle;
             door.add(spoke);
         }
-        const hub = new THREE.Mesh(new THREE.CircleGeometry(0.95, 24), flat(COLORS.doorHub));
+        const hub = new THREE.Mesh(new THREE.CircleGeometry(0.95, 24), this.roomFlat(COLORS.doorHub));
         hub.position.z = 0.02;
         door.add(hub);
-        const hubRim = new THREE.Mesh(new THREE.RingGeometry(0.95, 1.2, 24), flat(COLORS.doorRim));
+        const hubRim = new THREE.Mesh(new THREE.RingGeometry(0.95, 1.2, 24), this.roomFlat(COLORS.doorRim));
         hubRim.position.z = 0.02;
         door.add(hubRim);
+        for (const y of [2.6, -2.6]) {
+            const hinge = new THREE.Mesh(new THREE.BoxGeometry(0.6, 1.0, 0.5), lit(COLORS.pipeDark));
+            hinge.position.set(-4.4, y, 0.2);
+            door.add(hinge);
+        }
         this.group.add(door);
 
-        // Tall panels down the left side of the room
-        for (let i = 0; i < 3; i++) {
-            const panel = new THREE.Mesh(new THREE.PlaneGeometry(1.1, 6), flat(COLORS.sidePanel));
-            panel.position.set(-5.2 + i * 1.3, 1.4, -7.6);
+        // Tall panels at the left end of the back wall
+        for (let i = 0; i < 2; i++) {
+            const panel = new THREE.Mesh(new THREE.PlaneGeometry(1.0, 6), this.roomFlat(COLORS.sidePanel));
+            panel.position.set(-7.2 + i * 1.15, 1.6, -8.0);
             this.group.add(panel);
         }
     }
 
+    // The accelerator's beam pipe along the back wall, with its magnets, collars
+    // and legs, plus pipes up the walls and conduits across the ceiling
+    private buildMachinery() {
+        const add = (geometry: THREE.BufferGeometry, color: number, x: number, y: number, z: number) => {
+            const mesh = new THREE.Mesh(geometry, lit(color));
+            mesh.position.set(x, y, z);
+            this.group.add(mesh);
+        };
+
+        // Beam pipe, running out through both side walls
+        add(tube(0.42, 16, 'x', 14), COLORS.pipe, 0, -0.85, -6.7);
+        for (let x = -7.2; x <= 7.2; x += 1.6) add(tube(0.52, 0.16, 'x', 14), COLORS.collar, x, -0.85, -6.7);
+        for (let x = -6.4; x <= 6.4; x += 3.2) add(new THREE.BoxGeometry(0.14, 0.6, 0.14), COLORS.pipeDark, x, -1.15, -6.7);
+        // Bending magnets around the pipe
+        add(new THREE.BoxGeometry(1.2, 1.25, 1.25), COLORS.magnetRed, -5.4, -0.85, -6.7);
+        add(new THREE.BoxGeometry(1.2, 1.25, 1.25), COLORS.magnetBlue, -1.4, -0.85, -6.7);
+        add(new THREE.BoxGeometry(1.2, 1.25, 1.25), COLORS.magnetRed, 6.1, -0.85, -6.7);
+
+        // Pipes up the back wall beside the door, and along the right wall
+        add(tube(0.15, 8.4, 'y'), COLORS.pipe, -3.0, 2.75, -7.75);
+        add(tube(0.1, 8.4, 'y'), COLORS.pipeDark, -3.4, 2.75, -7.8);
+        add(tube(0.16, 8.4, 'y'), COLORS.pipe, 7.75, 2.75, -6.9);
+        add(tube(0.12, 15, 'z'), COLORS.pipeDark, 7.8, 5.7, -0.5);
+
+        // Conduits and a cable tray across the ceiling
+        add(tube(0.13, 22, 'z'), COLORS.pipe, -2.2, 6.6, 2.95);
+        add(tube(0.09, 22, 'z'), COLORS.pipeDark, -1.8, 6.65, 2.95);
+        add(tube(0.16, 22, 'z'), COLORS.pipe, 5.2, 6.55, 2.95);
+        add(new THREE.BoxGeometry(0.9, 0.08, 22), COLORS.tray, 3.4, 6.7, 2.95);
+        // ...and one dropping down the back wall to the beam pipe
+        add(tube(0.13, 7.4, 'y'), COLORS.pipe, -2.2, 3.0, -7.7);
+    }
+
+    // A tall window in the right wall, with the storm outside: rain running down
+    // the glass and a lightning bolt that shows during a flash
+    private buildWindow() {
+        const pane = new THREE.Group();
+        pane.position.set(7.95, 2.1, -3.2);
+        pane.rotation.y = -Math.PI / 2;
+
+        this.skyMaterial = new THREE.MeshBasicMaterial({ color: COLORS.sky });
+        const sky = new THREE.Mesh(new THREE.PlaneGeometry(3.4, 4.4), this.skyMaterial);
+        sky.position.z = -0.03;
+        pane.add(sky);
+
+        this.bolt = new THREE.Mesh(new THREE.BufferGeometry(), new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0, side: THREE.DoubleSide }));
+        this.bolt.position.z = -0.02;
+        pane.add(this.bolt);
+
+        // Rain streaks on a texture that scrolls down the glass
+        const rainCanvas = document.createElement('canvas');
+        rainCanvas.width = 256;
+        rainCanvas.height = 512;
+        const rain = rainCanvas.getContext('2d')!;
+        rain.strokeStyle = 'rgba(170, 195, 255, 0.3)';
+        rain.lineWidth = 1.5;
+        for (let i = 0; i < 90; i++) {
+            const x = Math.random() * 256;
+            const y = Math.random() * 512;
+            const length = 18 + Math.random() * 34;
+            rain.beginPath();
+            rain.moveTo(x, y);
+            rain.lineTo(x - length * 0.12, y + length);
+            rain.stroke();
+        }
+        this.rainTexture = new THREE.CanvasTexture(rainCanvas);
+        this.rainTexture.wrapS = this.rainTexture.wrapT = THREE.RepeatWrapping;
+        const glass = new THREE.Mesh(new THREE.PlaneGeometry(3.4, 4.4), new THREE.MeshBasicMaterial({ map: this.rainTexture, transparent: true, depthWrite: false }));
+        glass.position.z = -0.01;
+        pane.add(glass);
+
+        // Frame, split into four panes
+        const frame = this.roomFlat(COLORS.windowFrame);
+        for (const [w, h, x, y] of [[3.7, 0.16, 0, 2.2], [3.7, 0.16, 0, -2.2], [0.16, 4.5, -1.75, 0], [0.16, 4.5, 1.75, 0], [0.1, 4.4, 0, 0], [3.4, 0.1, 0, 0.4]]) {
+            const bar = new THREE.Mesh(new THREE.PlaneGeometry(w, h), frame);
+            bar.position.set(x, y, 0);
+            pane.add(bar);
+        }
+        this.group.add(pane);
+    }
+
+    // A jagged bolt from the top of the window, different every flash
+    private makeBolt() {
+        const points: THREE.Vector2[] = [];
+        let x = (Math.random() - 0.5) * 1.6;
+        const top = 2.2;
+        const bottom = -0.6 - Math.random() * 1.2;
+        const steps = 9;
+        const spine: THREE.Vector2[] = [];
+        for (let i = 0; i <= steps; i++) {
+            spine.push(new THREE.Vector2(x, top + (bottom - top) * (i / steps)));
+            x += (Math.random() - 0.5) * 0.5;
+        }
+        // A thin ribbon either side of the spine, tapering to a point
+        for (let i = 0; i <= steps; i++) points.push(new THREE.Vector2(spine[i].x - 0.11 * (1 - i / steps) - 0.015, spine[i].y));
+        for (let i = steps; i >= 0; i--) points.push(new THREE.Vector2(spine[i].x + 0.11 * (1 - i / steps) + 0.015, spine[i].y));
+        this.bolt.geometry.dispose();
+        this.bolt.geometry = new THREE.ShapeGeometry(new THREE.Shape(points));
+    }
+
+    // Wall-mounted monitors, two on the back wall and one beside the window
+    private buildMonitors() {
+        const places: { x: number; y: number; z: number; turn: number }[] = [
+            { x: -4.6, y: 0.5, z: -7.7, turn: 0 },
+            { x: -4.6, y: 1.85, z: -7.7, turn: 0 },
+            { x: 7.7, y: 1.3, z: 0.9, turn: -Math.PI / 2 },
+        ];
+        for (const place of places) {
+            const monitor = new THREE.Group();
+            monitor.position.set(place.x, place.y, place.z);
+            monitor.rotation.y = place.turn;
+            monitor.add(new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.85, 0.45), lit(COLORS.monitorCase)));
+
+            const canvas = document.createElement('canvas');
+            canvas.width = 256;
+            canvas.height = 180;
+            const texture = new THREE.CanvasTexture(canvas);
+            texture.colorSpace = THREE.SRGBColorSpace;
+            const screen = new THREE.Mesh(new THREE.PlaneGeometry(1.0, 0.7), new THREE.MeshBasicMaterial({ map: texture }));
+            screen.position.z = 0.23;
+            monitor.add(screen);
+            this.group.add(monitor);
+
+            this.monitors.push({ ctx: canvas.getContext('2d')!, texture, lines: [], next: 0 });
+        }
+    }
+
+    // Scroll a new status line onto each monitor now and then
+    private updateMonitors(now: number) {
+        for (const monitor of this.monitors) {
+            if (now < monitor.next) continue;
+            monitor.next = now + 350 + Math.random() * 500;
+            const template = MONITOR_LINES[Math.floor(Math.random() * MONITOR_LINES.length)];
+            monitor.lines.push(template.replace(/#/g, () => String(Math.floor(Math.random() * 10))));
+            if (monitor.lines.length > 9) monitor.lines.shift();
+
+            const ctx = monitor.ctx;
+            ctx.fillStyle = '#04140a';
+            ctx.fillRect(0, 0, 256, 180);
+            ctx.font = `15px ${TEXT_FONT}`;
+            ctx.textBaseline = 'top';
+            monitor.lines.forEach((line, i) => {
+                ctx.fillStyle = i === monitor.lines.length - 1 ? '#c8ffc0' : TEXT_COLOR;
+                ctx.fillText(line, 10, 8 + i * 18.5);
+            });
+            monitor.texture.needsUpdate = true;
+        }
+    }
+
+    // Rain down the glass, and a double lightning flash every so often that
+    // brightens the room, shows a bolt in the window and lights the scientist
+    private updateStorm(now: number, dt: number) {
+        this.rainTexture.offset.y += dt * 0.9;
+
+        if (now >= this.nextFlash) {
+            this.flashStart = now;
+            this.nextFlash = now + 7000 + Math.random() * 9000;
+            this.makeBolt();
+        }
+        const t = now - this.flashStart;
+        const flash = t < 0 ? 0 : t < 80 ? 1 : t < 150 ? 0.15 : t < 260 ? 0.9 : t < 700 ? 0.9 * (1 - (t - 260) / 440) : 0;
+
+        this.skyMaterial.color.set(COLORS.sky).lerp(FLASH_SKY, flash * 0.85);
+        for (const { material, base } of this.flashMaterials) {
+            material.color.copy(base).lerp(FLASH_COLOR, flash * 0.55);
+        }
+        (this.bolt.material as THREE.MeshBasicMaterial).opacity = flash > 0.3 ? flash : 0;
+        this.lightning.intensity = flash * 7;
+        this.ambient.intensity = 1.6 + flash * 1.5;
+    }
+
     private buildConsole() {
-        const top = new THREE.Mesh(new THREE.BoxGeometry(4.4, 0.12, 1.5), flat(COLORS.consoleTop));
+        const top = new THREE.Mesh(new THREE.BoxGeometry(4.4, 0.12, 1.5), this.roomFlat(COLORS.consoleTop));
         top.position.set(0.1, -1.0, 0.55);
         top.rotation.x = 0.14;
         this.group.add(top);
 
-        const front = new THREE.Mesh(new THREE.BoxGeometry(4.4, 0.5, 0.1), flat(COLORS.consoleFront));
+        const front = new THREE.Mesh(new THREE.BoxGeometry(4.4, 0.5, 0.1), this.roomFlat(COLORS.consoleFront));
         front.position.set(0.1, -1.3, 1.3);
         this.group.add(front);
 
@@ -246,6 +504,7 @@ export class HoloLabScene {
             mesh.rotation.set(...rotation);
             mesh.scale.set(...scale);
             figure.add(mesh);
+            return mesh;
         };
 
         // Chair
@@ -286,9 +545,55 @@ export class HoloLabScene {
             part(new THREE.TetrahedronGeometry(0.08), COLORS.hair, [side * 0.12, 0.99, -0.02], [0.2, side, 0.3]);
         }
 
-        // Keyboard ledge in front of him
-        part(new THREE.BoxGeometry(1.0, 0.05, 0.36), COLORS.consoleTop, [0, 0.28, 0.62]);
-        part(new THREE.BoxGeometry(0.52, 0.025, 0.16), COLORS.keyboard, [0, 0.315, 0.58]);
+        // His curved operator desk, wrapping round the chair: a top, a front
+        // skirt down to the floor, rows of lit buttons, two dials and the keyboard
+        const sweep = THREE.MathUtils.degToRad(75);
+        const desk = new THREE.Shape();
+        for (let i = 0; i <= 24; i++) {
+            const a = -sweep + (2 * sweep * i) / 24;
+            if (i === 0) desk.moveTo(Math.sin(a) * 1.05, -Math.cos(a) * 1.05);
+            else desk.lineTo(Math.sin(a) * 1.05, -Math.cos(a) * 1.05);
+        }
+        for (let i = 24; i >= 0; i--) {
+            const a = -sweep + (2 * sweep * i) / 24;
+            desk.lineTo(Math.sin(a) * 0.55, -Math.cos(a) * 0.55);
+        }
+        const deskTop = new THREE.ExtrudeGeometry(desk, { depth: 0.06, bevelEnabled: false });
+        deskTop.rotateX(-Math.PI / 2);
+        part(deskTop, COLORS.deskTop, [0, 0.24, 0]);
+        // Open-ended, so it is seen from inside as well as out
+        const skirt = part(new THREE.CylinderGeometry(1.05, 1.05, 0.69, 24, 1, true, -sweep, 2 * sweep), COLORS.deskSide, [0, -0.105, 0]);
+        (skirt.material as THREE.MeshLambertMaterial).side = THREE.DoubleSide;
+        part(new THREE.BoxGeometry(0.52, 0.025, 0.16), COLORS.keyboard, [0, 0.31, 0.64]);
+
+        for (const radius of [0.7, 0.8, 0.9]) {
+            for (let i = 0; i < 16; i++) {
+                const side = i < 8 ? -1 : 1;
+                const a = side * THREE.MathUtils.degToRad(26 + (i % 8) * 6);
+                const button = new THREE.Mesh(new THREE.PlaneGeometry(0.035, 0.022), new THREE.MeshBasicMaterial({
+                    color: INDICATOR_COLORS[Math.floor(Math.random() * INDICATOR_COLORS.length)], transparent: true, side: THREE.DoubleSide
+                }));
+                button.rotation.set(-Math.PI / 2, 0, -a);
+                button.position.set(Math.sin(a) * radius, 0.305, Math.cos(a) * radius);
+                button.userData.phase = Math.random() * Math.PI * 2;
+                // Only some of them blink
+                if (Math.random() < 0.4) this.indicators.push(button);
+                figure.add(button);
+            }
+        }
+        for (const side of [-1, 1]) {
+            const a = side * THREE.MathUtils.degToRad(66);
+            const dial = new THREE.Group();
+            dial.position.set(Math.sin(a) * 0.84, 0.36, Math.cos(a) * 0.84);
+            dial.rotation.set(-0.9, a, 0);
+            dial.add(new THREE.Mesh(new THREE.CircleGeometry(0.06, 16), new THREE.MeshBasicMaterial({ color: 0xd8e0f0, side: THREE.DoubleSide })));
+            const needle = new THREE.Mesh(new THREE.PlaneGeometry(0.008, 0.05), new THREE.MeshBasicMaterial({ color: 0xe24a3a, side: THREE.DoubleSide }));
+            needle.position.set(0, 0.018, 0.002);
+            needle.rotation.z = side * 0.6;
+            dial.add(needle);
+            part(new THREE.BoxGeometry(0.18, 0.15, 0.04), COLORS.deskSide, [Math.sin(a) * 0.86, 0.34, Math.cos(a) * 0.86], [-0.9, a, 0]);
+            figure.add(dial);
+        }
 
         figure.position.copy(SEAT_POSITION);
         figure.lookAt(new THREE.Vector3(LAB_BOX_CENTER.x, SEAT_POSITION.y, LAB_BOX_CENTER.z));
@@ -301,6 +606,8 @@ export class HoloLabScene {
         const part = hour < 12 ? 'morning' : hour < 18 ? 'afternoon' : 'evening';
         this.greeting = userName ? `Good ${part}, ${userName}.` : `Good ${part}.`;
         this.bootStart = performance.now();
+        // The storm makes itself known soon after the display comes up
+        this.nextFlash = this.bootStart + 4500;
         this.drawnKey = '';
     }
 
@@ -363,6 +670,11 @@ export class HoloLabScene {
         for (const light of this.indicators) {
             (light.material as THREE.MeshBasicMaterial).opacity = 0.55 + 0.45 * Math.sin(t * 1.3 + light.userData.phase);
         }
+
+        const dt = Math.min((now - this.lastUpdate) / 1000, 0.1);
+        this.lastUpdate = now;
+        this.updateStorm(now, dt);
+        this.updateMonitors(now);
 
         this.drawScreen(now);
     }
